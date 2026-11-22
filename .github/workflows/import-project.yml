@@ -1,0 +1,41 @@
+name: Import project bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/import-project.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: contains(github.event.head_commit.message, '[import-once]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download and extract bundle
+        env:
+          BUNDLE_URL: https://tmpfiles.org/dl/w6AEbukHfg28/animeclick.tar.gz.enc
+          PASSPHRASE: ${{ secrets.IMPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 5 "$BUNDLE_URL" -o /tmp/bundle.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass pass:"$PASSPHRASE" -in /tmp/bundle.enc -out /tmp/bundle.tar.gz
+          tar -xzf /tmp/bundle.tar.gz -C .
+          test -f README.md
+          test -f supabase/database/schema.sql
+
+      - name: Commit imported files
+        run: |
+          set -euo pipefail
+          git config user.name "mohammadislam2367"
+          git config user.email "322428041+mohammadislam2367@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Anime Click Ultimate project"
+          git push origin HEAD:main
