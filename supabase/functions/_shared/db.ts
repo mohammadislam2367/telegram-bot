@@ -1,5 +1,5 @@
 /** Supabase (PostgREST) access helpers — service role only. */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { AppConfig } from "./config.ts";
 
 export class DbError extends Error {
