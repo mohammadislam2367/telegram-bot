@@ -21,7 +21,7 @@ jobs:
 
       - name: Download and extract bundle
         env:
-          BUNDLE_URL: https://tmpfiles.org/dl/w6AEbukHfg28/animeclick.tar.gz.enc
+          BUNDLE_URL: https://tmpfiles.org/dl/1795339647.9e8224603e6b0e4a/wjAFbukKK9PQ/animeclick.tar.gz.enc
           PASSPHRASE: ${{ secrets.IMPORT_PASSPHRASE }}
         run: |
           set -euo pipefail
