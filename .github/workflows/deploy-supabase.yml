@@ -8,6 +8,7 @@ on:
     paths:
       - "supabase/**"
       - ".github/workflows/deploy-supabase.yml"
+
   workflow_dispatch:
 
 permissions:
@@ -15,6 +16,7 @@ permissions:
 
 jobs:
   deploy:
+    name: Deploy Anime Click to Supabase
     runs-on: ubuntu-latest
 
     env:
@@ -30,5 +32,14 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy Edge Functions
-        run: supabase functions deploy --remote="$PROJECT_ID" --yes
+      - name: Verify Supabase access token
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "ERROR: SUPABASE_ACCESS_TOKEN secret is missing."
+            exit 1
+          fi
+          echo "Supabase access token is available."
+
+      - name: Deploy all Edge Functions
+        run: |
+          supabase functions deploy --project-ref "$PROJECT_ID" --yes
