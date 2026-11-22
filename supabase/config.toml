@@ -1,0 +1,33 @@
+project_id = "sbbxlwlgeyshrhmemovq"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+
+# ─── Telegram webhook ────────────────────────────────────────────────────────
+# تلگرام هدر Authorization استاندارد Supabase را نمی‌فرستد، بنابراین تأیید JWT
+# غیرفعال است. امنیت این تابع با X-Telegram-Bot-Api-Secret-Token انجام می‌شود.
+[functions.telegram-bot]
+verify_jwt = false
+
+# scheduler فقط با X-Scheduler-Secret فراخوانی می‌شود (نه JWT).
+[functions.scheduler]
+verify_jwt = false
+
+# health عمومی، بدون داده‌ی حساس.
+[functions.health]
+verify_jwt = false

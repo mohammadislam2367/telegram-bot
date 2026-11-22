@@ -1,0 +1,23 @@
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# supabase CLI
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+
+# deno / node
+node_modules/
+.deno/
+deno.lock.bak
+
+# logs & local artifacts
+*.log
+tmp/
+dist/
+coverage/
+.DS_Store

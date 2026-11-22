@@ -1,0 +1,32 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/testing/mock": "jsr:@std/testing@1/mock"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": false,
+    "lib": ["deno.ns", "dom", "dom.iterable", "esnext"]
+  },
+  "tasks": {
+    "check": "deno check supabase/functions/telegram-bot/index.ts supabase/functions/scheduler/index.ts supabase/functions/health/index.ts",
+    "test": "deno test --allow-env --allow-read tests/",
+    "fmt": "deno fmt supabase/functions tests",
+    "fmt:check": "deno fmt --check supabase/functions tests",
+    "lint": "deno lint supabase/functions tests",
+    "verify": "deno task check && deno task lint && deno task test",
+    "sql:verify": "node scripts/verify-database.mjs"
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "semiColons": true,
+    "exclude": ["supabase/database/"]
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any", "require-await"]
+    }
+  }
+}
