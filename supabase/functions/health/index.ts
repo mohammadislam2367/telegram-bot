@@ -93,6 +93,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       const allowedUpdates = [
         "message",
         "edited_message",
+        "channel_post",
         "callback_query",
         "chat_member",
         "my_chat_member",
