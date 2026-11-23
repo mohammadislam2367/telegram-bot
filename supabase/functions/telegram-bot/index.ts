@@ -2,7 +2,7 @@
  * Telegram Webhook — Supabase Edge Function
  * امنیت: X-Telegram-Bot-Api-Secret-Token (مقایسه‌ی زمان-ثابت)
  */
-import { ConfigError, loadConfig } from "../_shared/config.ts";
+import { type AppConfig, ConfigError, loadConfig } from "../_shared/config.ts";
 import { getSupabase } from "../_shared/db.ts";
 import { createLogger } from "../_shared/logger.ts";
 import { SettingsStore } from "../_shared/settings.ts";
@@ -15,7 +15,71 @@ import { runWithErrorHandling } from "./router.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
+const WEBHOOK_ALLOWED_UPDATES = [
+  "message",
+  "edited_message",
+  "callback_query",
+  "chat_member",
+  "my_chat_member",
+];
+
 type EdgeRuntimeLike = { waitUntil(promise: Promise<unknown>): void };
+
+type WebhookSnapshot = {
+  ok: boolean;
+  repaired: boolean;
+  urlConfigured: boolean;
+  callbackQueryAllowed: boolean;
+  allowedUpdates: string[];
+};
+
+/**
+ * اگر Webhook با allowed_updates ناقص ثبت شده باشد (مثلاً فقط message)،
+ * دکمه‌های inline هرگز به تابع نمی‌رسند. این تابع با استفاده از Secretهای خودِ
+ * تابع، Webhook را به‌صورت idempotent دوباره ثبت می‌کند.
+ */
+async function syncWebhook(cfg: AppConfig, tg: TelegramApi): Promise<WebhookSnapshot> {
+  const expectedUrl = `${cfg.supabaseUrl}/functions/v1/telegram-bot`;
+  const info = await tg.getWebhookInfo() as {
+    url?: string;
+    allowed_updates?: string[];
+  };
+
+  const allowedUpdates = info.allowed_updates ?? [];
+  const healthy = info.url === expectedUrl &&
+    allowedUpdates.includes("callback_query");
+
+  if (healthy || !cfg.webhookSecret) {
+    return {
+      ok: healthy,
+      repaired: false,
+      urlConfigured: Boolean(info.url),
+      callbackQueryAllowed: allowedUpdates.includes("callback_query"),
+      allowedUpdates,
+    };
+  }
+
+  await tg.call<boolean>("setWebhook", {
+    url: expectedUrl,
+    secret_token: cfg.webhookSecret,
+    allowed_updates: WEBHOOK_ALLOWED_UPDATES,
+    max_connections: 40,
+  });
+
+  const after = await tg.getWebhookInfo() as {
+    url?: string;
+    allowed_updates?: string[];
+  };
+  const afterAllowed = after.allowed_updates ?? [];
+
+  return {
+    ok: after.url === expectedUrl && afterAllowed.includes("callback_query"),
+    repaired: true,
+    urlConfigured: Boolean(after.url),
+    callbackQueryAllowed: afterAllowed.includes("callback_query"),
+    allowedUpdates: afterAllowed,
+  };
+}
 
 function edgeRuntime(): EdgeRuntimeLike | null {
   const runtime = (globalThis as unknown as { EdgeRuntime?: EdgeRuntimeLike }).EdgeRuntime;
@@ -24,11 +88,28 @@ function edgeRuntime(): EdgeRuntimeLike | null {
 
 Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "GET") {
-    return jsonResponse({
-      ok: true,
-      service: SERVICE,
-      message: "Telegram webhook endpoint. POST updates from Telegram only.",
-    });
+    // باز کردن همین آدرس در مرورگر، Webhook ناقص را خودکار ترمیم می‌کند.
+    try {
+      const cfg = loadConfig();
+      const webhook = await syncWebhook(cfg, new TelegramApi(cfg.botToken));
+
+      return jsonResponse({
+        ok: true,
+        service: SERVICE,
+        message: "Telegram webhook endpoint. POST updates from Telegram only.",
+        webhook,
+      });
+    } catch (error) {
+      return jsonResponse({
+        ok: true,
+        service: SERVICE,
+        message: "Telegram webhook endpoint. POST updates from Telegram only.",
+        webhook: {
+          ok: false,
+          error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+        },
+      });
+    }
   }
 
   if (request.method !== "POST") {
