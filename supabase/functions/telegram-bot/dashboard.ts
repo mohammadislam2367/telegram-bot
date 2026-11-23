@@ -6,6 +6,7 @@ import {
   adminMainKeyboard,
   keyboard,
   urlButton,
+  userMainKeyboard,
 } from "../_shared/keyboards.ts";
 import { ROLE_LABELS } from "../_shared/auth.ts";
 import {
@@ -117,27 +118,14 @@ export function buildUserMenuMarkup(
   groupUrl: string,
   features: Record<string, boolean>,
 ): ReturnType<typeof keyboard> {
-  const rows: ReturnType<typeof keyboard>["inline_keyboard"] = [];
-  const first: { text: string; callback_data?: string; url?: string }[] = [];
-  if (features.ai) first.push({ text: "🤖 چت هوشمند", callback_data: "u:ai" });
-  if (features.anime) first.push({ text: "🔎 جستجوی انیمه", callback_data: "u:an" });
-  if (first.length > 0) rows.push(first);
-
-  const second: { text: string; callback_data?: string; url?: string }[] = [];
-  if (features.news) second.push({ text: "📰 آخرین اخبار", callback_data: "u:nw" });
-  second.push({ text: "👤 پروفایل من", callback_data: "u:pr" });
-  rows.push(second);
-
-  const third: { text: string; callback_data?: string; url?: string }[] = [];
-  if (channelUrl) third.push(urlButton("📢 کانال", channelUrl));
-  if (groupUrl) third.push(urlButton("💬 گروه", groupUrl));
-  if (third.length > 0) rows.push(third);
-
-  rows.push([
-    { text: "ℹ️ راهنما", callback_data: "u:hl" },
-    { text: "🔕 توقف پیام‌ها", callback_data: "u:st" },
-  ]);
-  return keyboard(rows);
+  // یک منبع واحد برای منوی کاربر (دسته‌بندی‌شده در shared/keyboards.ts)
+  return userMainKeyboard({
+    channelUrl,
+    supportUrl: groupUrl,
+    showAi: features.ai === true,
+    showAnime: features.anime === true,
+    showNews: features.news === true,
+  });
 }
 
 export async function renderUserHome(ctx: Ctx, customTitle?: string): Promise<void> {
@@ -185,7 +173,7 @@ export async function renderUserHelp(ctx: Ctx): Promise<void> {
       : "",
     "",
     features.anime
-      ? "<i>اطلاعات انیمه از Jikan (MyAnimeList) گرفته می‌شود و ممکن است چند ساعت تأخیر داشته باشد.</i>"
+      ? "<i>اطلاعات انیمه از منابع معتبر انیمه گرفته می‌شود و ممکن است چند ساعت تأخیر داشته باشد.</i>"
       : "",
     "<i>برای انصراف از حالت چت، /cancel را بفرستید.</i>",
   ].filter(Boolean);
@@ -285,19 +273,6 @@ export async function handleDashboardCallback(ctx: Ctx, parts: string[]): Promis
 
   if (section === "me") {
     await renderAdminProfile(ctx);
-    return true;
-  }
-
-  if (section === "sections") {
-    const text = ADMIN_MENU_SECTIONS.map((s) => `• ${s.label} → <code>${s.callbackData}</code>`)
-      .join("\n");
-    await editOrSend(
-      ctx,
-      `<b>فهرست بخش‌ها</b>\n${text}`,
-      keyboard([
-        [{ text: "🏠 داشبورد", callback_data: "a:h" }],
-      ]),
-    );
     return true;
   }
 
