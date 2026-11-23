@@ -15,6 +15,7 @@ import { runWithErrorHandling } from "./router.ts";
 import { handleChannelPost } from "./channels.ts";
 import { handleGamesMessage, handleQuizCallback } from "./games.ts";
 import { handleBotGuard } from "./guard.ts";
+import { handleGroupIntro } from "./group_intro.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
@@ -171,6 +172,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       // بازی‌ها و نگهبان ضد ربات قبل از مسیر اصلی بررسی می‌شوند.
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
+      if (update.message && await handleGroupIntro(extras, update.message)) return;
       if (update.message && await handleGamesMessage(extras, update.message)) return;
       await runWithErrorHandling(deps, update);
     })();
