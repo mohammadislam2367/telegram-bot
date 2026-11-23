@@ -1,161 +1,90 @@
-
 /**
- * Anime Click — Secure Webhook Setup
- * Registers Telegram webhook with callback_query enabled.
- *
- * Authentication:
- * x-setup-secret: SCHEDULER_SECRET
+ * Telegram Webhook — Supabase Edge Function
+ * امنیت: X-Telegram-Bot-Api-Secret-Token (مقایسه‌ی زمان-ثابت)
  */
-
-import { loadConfig, ConfigError } from "../_shared/config.ts";
+import { ConfigError, loadConfig } from "../_shared/config.ts";
+import { getSupabase } from "../_shared/db.ts";
+import { createLogger } from "../_shared/logger.ts";
+import { SettingsStore } from "../_shared/settings.ts";
+import { TelegramApi } from "../_shared/telegram.ts";
+import { GroupAdminChecker, verifyWebhookSecret } from "../_shared/auth.ts";
+import { limiter } from "../_shared/rate_limit.ts";
 import { jsonResponse } from "../_shared/http.ts";
+import type { TgUpdate } from "../_shared/types.ts";
+import { runWithErrorHandling } from "./router.ts";
 
-const SERVICE = "anime-click-webhook-setup";
+const SERVICE = "anime-click-ultimate-telegram-bot";
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+type EdgeRuntimeLike = { waitUntil(promise: Promise<unknown>): void };
 
-  let result = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-
-  return result === 0;
+function edgeRuntime(): EdgeRuntimeLike | null {
+  const runtime = (globalThis as unknown as { EdgeRuntime?: EdgeRuntimeLike }).EdgeRuntime;
+  return runtime ?? null;
 }
 
 Deno.serve(async (request: Request): Promise<Response> => {
-  if (request.method !== "POST") {
-    return jsonResponse(
-      { ok: false, error: "method_not_allowed" },
-      405,
-    );
-  }
-
-  let cfg;
-
-  try {
-    cfg = loadConfig();
-  } catch (error) {
-    const missing = error instanceof ConfigError
-      ? error.missing
-      : ["unknown"];
-
-    return jsonResponse({
-      ok: false,
-      service: SERVICE,
-      error: "configuration_error",
-      missing,
-    }, 503);
-  }
-
-  // Require a separate setup secret.
-  if (!cfg.schedulerSecret) {
-    return jsonResponse({
-      ok: false,
-      error: "scheduler_secret_not_configured",
-    }, 503);
-  }
-
-  const suppliedSecret =
-    request.headers.get("x-setup-secret") ?? "";
-
-  if (!safeEqual(suppliedSecret, cfg.schedulerSecret)) {
-    return jsonResponse({
-      ok: false,
-      error: "unauthorized",
-    }, 401);
-  }
-
-  if (!cfg.webhookSecret) {
-    return jsonResponse({
-      ok: false,
-      error: "webhook_secret_not_configured",
-    }, 503);
-  }
-
-  // Telegram secret_token accepts only these characters.
-  if (!/^[A-Za-z0-9_-]{1,256}$/.test(cfg.webhookSecret)) {
-    return jsonResponse({
-      ok: false,
-      error: "invalid_telegram_webhook_secret_format",
-    }, 400);
-  }
-
-  const webhookUrl =
-    `${cfg.supabaseUrl}/functions/v1/telegram-bot`;
-
-  const allowedUpdates = [
-    "message",
-    "edited_message",
-    "callback_query",
-    "chat_member",
-    "my_chat_member",
-  ];
-
-  try {
-    const telegramResponse = await fetch(
-      `https://api.telegram.org/bot${cfg.botToken}/setWebhook`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          url: webhookUrl,
-          secret_token: cfg.webhookSecret,
-          allowed_updates: allowedUpdates,
-          max_connections: 40,
-        }),
-      },
-    );
-
-    const result = await telegramResponse.json();
-
-    if (!telegramResponse.ok || result.ok !== true) {
-      console.error("Telegram setWebhook failed:", result.description);
-
-      return jsonResponse({
-        ok: false,
-        error: "telegram_set_webhook_failed",
-        detail: result.description ?? "Unknown Telegram API error",
-      }, 502);
-    }
-
-    // Verify the new configuration.
-    const verifyResponse = await fetch(
-      `https://api.telegram.org/bot${cfg.botToken}/getWebhookInfo`,
-    );
-
-    const verifyResult = await verifyResponse.json();
-
-    if (!verifyResponse.ok || verifyResult.ok !== true) {
-      return jsonResponse({
-        ok: false,
-        error: "webhook_verification_failed",
-      }, 502);
-    }
-
-    const info = verifyResult.result;
-
+  if (request.method === "GET") {
     return jsonResponse({
       ok: true,
       service: SERVICE,
-      message: "Webhook registered and verified.",
-      webhook: {
-        urlConfigured: Boolean(info.url),
-        callbackQueryAllowed:
-          info.allowed_updates?.includes("callback_query") ?? false,
-        allowedUpdates: info.allowed_updates ?? [],
-        pendingUpdates: info.pending_update_count ?? 0,
-      },
+      message: "Telegram webhook endpoint. POST updates from Telegram only.",
     });
-  } catch (error) {
-    console.error("Webhook setup failed:", error);
-
-    return jsonResponse({
-      ok: false,
-      error: "setup_failed",
-    }, 500);
   }
+
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  let cfg;
+  try {
+    cfg = loadConfig();
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      console.error("config error:", error.missing.join(","));
+      return jsonResponse({
+        ok: false,
+        error: "server_not_configured",
+        missing: error.missing,
+      }, 500);
+    }
+    throw error;
+  }
+
+  if (!cfg.webhookSecret) {
+    console.error("TELEGRAM_WEBHOOK_SECRET is not set — refusing all updates");
+    return jsonResponse({ ok: false, error: "webhook_secret_not_configured" }, 500);
+  }
+
+  const provided = request.headers.get("x-telegram-bot-api-secret-token");
+  if (!verifyWebhookSecret(provided, cfg.webhookSecret)) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  let update: TgUpdate;
+  try {
+    update = await request.json() as TgUpdate;
+    if (typeof update.update_id !== "number") throw new Error("missing update_id");
+  } catch {
+    return jsonResponse({ ok: false, error: "invalid_payload" }, 400);
+  }
+
+  const sb = getSupabase(cfg);
+  const tg = new TelegramApi(cfg.botToken);
+  const log = createLogger(sb, "telegram-bot");
+  const settings = new SettingsStore(sb);
+  const groupAdmins = new GroupAdminChecker(tg);
+
+  const processing = runWithErrorHandling(
+    { cfg, sb, tg, settings, log, groupAdmins, limiter },
+    update,
+  );
+
+  const runtime = edgeRuntime();
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(processing);
+  } else {
+    await processing;
+  }
+
+  return jsonResponse({ ok: true });
 });
