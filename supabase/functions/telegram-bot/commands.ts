@@ -3,7 +3,7 @@ import { keyboard } from "../_shared/keyboards.ts";
 import { clearSession } from "../_shared/sessions.ts";
 import { divider, faDateTime } from "../_shared/texts.ts";
 import { displayName } from "../_shared/texts.ts";
-import { renderAdminHome, renderUserHelp, renderUserHome } from "./dashboard.ts";
+import { renderAdminHome, renderOwnerPanel, renderUserHelp, renderUserHome } from "./dashboard.ts";
 import { commandAnime } from "./anime.ts";
 import { commandNews } from "./news.ts";
 import { handleOneShotAi, startUserChat } from "./ai.ts";
@@ -16,6 +16,7 @@ import {
 } from "./users.ts";
 import { renderUserHome as renderHome } from "./dashboard.ts";
 import { answerCallback, type Ctx, editOrSend, send } from "./context.ts";
+import { handleOwnerWarningCommand } from "./warning.ts";
 
 export interface ParsedCommand {
   command: string;
@@ -63,6 +64,17 @@ export async function handlePrivateCommand(ctx: Ctx, parsed: ParsedCommand): Pro
 
     case "ai": {
       await handleOneShotAi(ctx, args);
+      return;
+    }
+
+    case "owner": {
+      await renderOwnerPanel(ctx);
+      return;
+    }
+
+    case "warning":
+    case "setwarning": {
+      await handleOwnerWarningCommand(ctx, args);
       return;
     }
 
@@ -152,6 +164,11 @@ export async function handlePrivateCommand(ctx: Ctx, parsed: ParsedCommand): Pro
 }
 
 export async function handleStartPayload(ctx: Ctx, payload: string): Promise<boolean> {
+  if (payload === "owner") {
+    await renderOwnerPanel(ctx);
+    return true;
+  }
+
   if (payload === "admin") {
     if (ctx.admin) {
       await renderAdminHome(ctx, false);
