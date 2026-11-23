@@ -17,6 +17,8 @@ import { handleGamesMessage, handleQuizCallback } from "./games.ts";
 import { handleBotGuard } from "./guard.ts";
 import { handleGroupIntro } from "./group_intro.ts";
 import { BOT_COMMANDS, handleQuickCallback, handleQuickMessage } from "./quick.ts";
+import { handleToolboxCallback, handleToolboxMessage } from "./toolbox.ts";
+import { handleGroupExtra } from "./group_extra.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
@@ -182,11 +184,22 @@ Deno.serve(async (request: Request): Promise<Response> => {
         update.callback_query &&
         await handleQuickCallback({ ...extras, settings }, update.callback_query)
       ) return;
+      if (
+        update.callback_query &&
+        await handleToolboxCallback({ ...extras, settings }, update.callback_query)
+      ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
       if (update.message && await handleQuickMessage({ ...extras, settings }, update.message)) {
         return;
       }
+      if (update.message && await handleToolboxMessage({ ...extras, settings }, update.message)) {
+        return;
+      }
+      if (
+        update.message &&
+        await handleGroupExtra({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
       if (update.message && await handleGroupIntro(extras, update.message)) return;
       if (update.message && await handleGamesMessage(extras, update.message)) return;
       await runWithErrorHandling(deps, update);
