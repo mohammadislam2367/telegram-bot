@@ -136,21 +136,29 @@ export interface UserMenuOptions {
 
 export function userMainKeyboard(options: UserMenuOptions): TgInlineKeyboardMarkup {
   const rows: Button[][] = [];
+
+  // دستهٔ ۱ — سرگرمی و محتوا
   const first: Button[] = [];
   if (options.showAi) first.push(button("🤖 چت هوشمند", "u:ai"));
   if (options.showAnime) first.push(button("🔎 جستجوی انیمه", "u:an"));
   if (first.length > 0) rows.push(first);
 
+  // دستهٔ ۲ — خبر و بازی
   const second: Button[] = [];
   if (options.showNews) second.push(button("📰 آخرین اخبار", "u:nw"));
-  second.push(button("👤 پروفایل من", "u:pr"));
+  second.push(button("🎮 بازی و سرگرمی", "u:gm"));
   rows.push(second);
 
-  const third: Button[] = [];
-  if (options.channelUrl) third.push(urlButton("📢 کانال", options.channelUrl));
-  if (options.supportUrl) third.push(urlButton("💬 پشتیبانی", options.supportUrl));
-  if (third.length > 0) rows.push(third);
+  // دستهٔ ۳ — حساب کاربری و راهنما
+  rows.push([button("👤 پروفایل من", "u:pr"), button("ℹ️ راهنما", "u:hl")]);
 
-  rows.push([button("ℹ️ راهنما", "u:hl"), button("🔕 توقف پیام‌ها", "u:st")]);
+  // دستهٔ ۴ — کانال و پشتیبانی
+  const fourth: Button[] = [];
+  if (options.channelUrl) fourth.push(urlButton("📢 کانال", options.channelUrl));
+  if (options.supportUrl) fourth.push(urlButton("💬 پشتیبانی", options.supportUrl));
+  if (fourth.length > 0) rows.push(fourth);
+
+  // دستهٔ ۵ — تنظیم پیام‌ها
+  rows.push([button("🔕 توقف پیام‌ها", "u:st")]);
   return keyboard(rows);
 }
