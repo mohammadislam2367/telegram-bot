@@ -14,6 +14,7 @@ import { clearSession, startSession } from "../_shared/sessions.ts";
 import type { TgInlineKeyboardMarkup, TgMessage, TgUpdate, UserRow } from "../_shared/types.ts";
 import { insertRow } from "../_shared/db.ts";
 import { escapeHtml } from "../_shared/validation.ts";
+import { humanizeMarkup, humanizeText } from "../_shared/plain_language.ts";
 
 export interface Ctx {
   cfg: AppConfig;
@@ -62,7 +63,10 @@ export async function send(
   markup?: TgInlineKeyboardMarkup,
 ): Promise<TgMessage | null> {
   try {
-    return await ctx.tg.sendMessage(ctx.chatId, text, { markup, preview: false });
+    return await ctx.tg.sendMessage(ctx.chatId, humanizeText(text), {
+      markup: humanizeMarkup(markup),
+      preview: false,
+    });
   } catch (error) {
     if (error instanceof TelegramError && error.isNotModified) return null;
     await ctx.log.warn("sendMessage failed", {
@@ -80,7 +84,10 @@ export async function sendTo(
   markup?: TgInlineKeyboardMarkup,
 ): Promise<TgMessage | null> {
   try {
-    return await ctx.tg.sendMessage(chatId, text, { markup, preview: false });
+    return await ctx.tg.sendMessage(chatId, humanizeText(text), {
+      markup: humanizeMarkup(markup),
+      preview: false,
+    });
   } catch (error) {
     await ctx.log.warn("sendMessage(chat) failed", {
       chatId,
@@ -96,21 +103,23 @@ export async function editOrSend(
   text: string,
   markup?: TgInlineKeyboardMarkup,
 ): Promise<void> {
+  const body = humanizeText(text);
+  const kb = humanizeMarkup(markup);
   const message = ctx.update.callback_query?.message;
   if (!message) {
-    await send(ctx, text, markup);
+    await send(ctx, body, kb);
     return;
   }
   try {
-    await ctx.tg.editMessageText(ctx.chatId, message.message_id, text, { markup });
+    await ctx.tg.editMessageText(ctx.chatId, message.message_id, body, { markup: kb });
   } catch (error) {
     if (error instanceof TelegramError && error.isNotModified) return;
     if (error instanceof TelegramError && /message to edit not found/i.test(error.description)) {
-      await send(ctx, text, markup);
+      await send(ctx, body, kb);
       return;
     }
     await ctx.log.warn("editMessageText failed", { error: (error as Error).message });
-    await send(ctx, text, markup);
+    await send(ctx, body, kb);
   }
 }
 
@@ -122,7 +131,7 @@ export async function answerCallback(
   const id = ctx.update.callback_query?.id;
   if (!id) return;
   try {
-    await ctx.tg.answerCallback(id, text, alert);
+    await ctx.tg.answerCallback(id, text ? humanizeText(text) : text, alert);
   } catch (error) {
     console.warn("answerCallback failed:", (error as Error).message);
   }
