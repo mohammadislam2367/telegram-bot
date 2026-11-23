@@ -36,6 +36,12 @@ import {
   handleMyChatMemberUpdate,
 } from "./moderation.ts";
 import { handleWizardInput } from "./wizard_flow.ts";
+import {
+  handleGroupInsult,
+  handleOwnerWarningCommand,
+  handlePrivateInsult,
+  tryOwnerWarningKeyword,
+} from "./warning.ts";
 
 export interface RouterDeps {
   cfg: AppConfig;
@@ -143,7 +149,11 @@ export async function processUpdate(deps: RouterDeps, update: TgUpdate): Promise
 
   if (update.message) {
     if (chat.type === "private") await handlePrivateMessage(ctx);
-    else if (chat.type === "group" || chat.type === "supergroup") await handleGroupMessage(ctx);
+    else if (chat.type === "group" || chat.type === "supergroup") {
+      // توهین مستقیم به ربات → متن اخطار نوشته‌شده توسط صاحب ربات
+      if (await handleGroupInsult(ctx)) return;
+      await handleGroupMessage(ctx);
+    }
     return;
   }
 }
@@ -205,6 +215,12 @@ async function handlePrivateMessage(ctx: Ctx): Promise<void> {
       return;
     }
   }
+
+  // صاحب ربات: «اخطار <متن>» متن اخطار گروه‌ها را ثبت می‌کند
+  if (await tryOwnerWarningKeyword(ctx, text)) return;
+
+  // توهین به ربات در چت خصوصی → همان متن اخطار
+  if (await handlePrivateInsult(ctx, text)) return;
 
   const session = await getSession(ctx.sb, ctx.userId, ctx.chatId);
 
@@ -327,6 +343,11 @@ async function handleCallback(ctx: Ctx): Promise<void> {
 
     if (action === "st") {
       await send(ctx, "🔕 برای توقف پیام‌ها دستور /stop را بفرستید.");
+      return;
+    }
+
+    if (action === "wn") {
+      await handleOwnerWarningCommand(ctx, "");
       return;
     }
 
