@@ -1,13 +1,7 @@
 /** داشبورد اصلی مدیریت و صفحه‌ی کاربر. */
 import { countRows, selectOne } from "../_shared/db.ts";
 import { getAiState } from "../_shared/ai_core.ts";
-import {
-  ADMIN_MENU_SECTIONS,
-  adminMainKeyboard,
-  keyboard,
-  urlButton,
-  userMainKeyboard,
-} from "../_shared/keyboards.ts";
+import { adminMainKeyboard, keyboard, userMainKeyboard } from "../_shared/keyboards.ts";
 import { ROLE_LABELS } from "../_shared/auth.ts";
 import {
   displayName,
