@@ -142,8 +142,46 @@ export function buildAdminIdentity(input: {
   };
 }
 
+/** کش کوتاه‌مدت نقش مدیران — یک درخواست دیتابیس کمتر در هر پیام (سرعت پاسخ). */
+const adminCache = new Map<string, { identity: AdminIdentity | null; expiresAt: number }>();
+const ADMIN_CACHE_TTL_MS = 60_000;
+
+function adminCacheKey(sb: SupabaseClient, userId: number): string {
+  return `${(sb as unknown as { supabaseUrl?: string }).supabaseUrl ?? "sb"}:${userId}`;
+}
+
 /** خواندن مدیر از DB؛ در صورت نبود ردیف برای SUPER_ADMIN_IDS، مالک ساخته می‌شود. */
 export async function getAdmin(
+  sb: SupabaseClient,
+  userId: number,
+  superAdminIds: number[],
+): Promise<AdminIdentity | null> {
+  const cacheKey = adminCacheKey(sb, userId);
+  const cached = adminCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.identity;
+
+  const identity = await loadAdmin(sb, userId, superAdminIds);
+  adminCache.set(cacheKey, { identity, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+  if (adminCache.size > 300) {
+    for (const [key, value] of adminCache) {
+      if (value.expiresAt <= Date.now()) adminCache.delete(key);
+    }
+  }
+  return identity;
+}
+
+/** کش را دور می‌زند (بعد از تغییر نقش مدیر لازم است). */
+export function forgetAdminCache(userId?: number): void {
+  if (userId === undefined) {
+    adminCache.clear();
+    return;
+  }
+  for (const key of [...adminCache.keys()]) {
+    if (key.endsWith(`:${userId}`)) adminCache.delete(key);
+  }
+}
+
+async function loadAdmin(
   sb: SupabaseClient,
   userId: number,
   superAdminIds: number[],
