@@ -1,9 +1,8 @@
-/** 🛡 امنیت و گزارش فعالیت — لاگ‌ها، Audit مدیران، sessionها و چک‌لیست. */
+/** 🛡 امنیت و گزارش فعالیت — رویدادها، کارهای مدیران، گفتگوها و بررسی امنیتی. */
 import { countRows, selectRows } from "../_shared/db.ts";
 import { deleteExpiredSessions } from "../_shared/sessions.ts";
 import { type Button, keyboard } from "../_shared/keyboards.ts";
 import { divider, faDateTime, faNum, sectionTitle } from "../_shared/texts.ts";
-import { escapeHtml, truncate } from "../_shared/validation.ts";
 import { getAiState } from "../_shared/ai_core.ts";
 import type { AdminActionRow, SystemLogRow } from "../_shared/types.ts";
 import {
@@ -15,8 +14,35 @@ import {
   send,
 } from "./context.ts";
 
+const LEVEL_LABELS: Record<string, string> = {
+  all: "همه",
+  error: "خطا",
+  warn: "هشدار",
+  info: "اطلاع",
+};
+
+const SCOPE_LABELS: Record<string, string> = {
+  "telegram-bot": "ربات",
+  scheduler: "زمان‌بند",
+  broadcast: "پیام همگانی",
+  health: "سلامت سیستم",
+  supabase: "سرور",
+};
+
 function levelButton(level: string, current: string): string {
-  return level === current ? `• ${level} •` : level;
+  const label = LEVEL_LABELS[level] ?? level;
+  return level === current ? `• ${label} •` : label;
+}
+
+/** هیچ متن انگلیسی یا اصطلاح فنی به کاربر نشان داده نمی‌شود. */
+function friendlyScope(scope: string): string {
+  return SCOPE_LABELS[scope] ?? "سیستم";
+}
+
+function friendlyMessage(level: string): string {
+  if (level === "error") return "یک درخواست ناموفق ماند";
+  if (level === "warn") return "یک هشدار داخلی ثبت شد";
+  return "رویداد عادی";
 }
 
 async function renderPanel(ctx: Ctx): Promise<void> {
@@ -34,32 +60,30 @@ async function renderPanel(ctx: Ctx): Promise<void> {
   const text = [
     sectionTitle("🛡 امنیت و گزارش فعالیت"),
     divider(),
-    `Webhook Secret: ${ctx.cfg.webhookSecret ? "✅ تنظیم شده" : "❌ تنظیم نشده"}`,
-    `Scheduler Secret: ${ctx.cfg.schedulerSecret ? "✅ تنظیم شده" : "❌ تنظیم نشده"}`,
-    `مدیران مجاز (env): ${faNum(ctx.cfg.superAdminIds.length)}`,
-    `مسدودان ربات: ${faNum(bans)}`,
+    `اتصال به تلگرام: ${ctx.cfg.webhookSecret ? "✅ برقرار" : "⚠️ نیاز به بررسی"}`,
+    `زمان‌بندی انتشار: ${ctx.cfg.schedulerSecret ? "✅ فعال" : "⚪️ خاموش"}`,
+    `مدیران ربات: ${faNum(ctx.cfg.superAdminIds.length)}`,
+    `کاربران مسدود: ${faNum(bans)}`,
     "",
     `<b>۲۴ ساعت گذشته</b>`,
     `خطا: ${faNum(errors)} • هشدار: ${faNum(warnings)}`,
     `اقدام مدیران: ${faNum(actions)}`,
     "",
-    `Sessionهای فعال: ${faNum(sessions)}`,
-    `وضعیت AI: ${aiState.status}${
-      aiState.last_error ? ` — ${escapeHtml(truncate(aiState.last_error, 80))}` : ""
-    }`,
+    `گفتگوهای باز: ${faNum(sessions)}`,
+    `دستیار هوشمند: ${aiState.status === "ok" ? "✅ آماده" : "⚪️ فعلاً در دسترس نیست"}`,
     `<i>${faDateTime(ctx.now, timeZone)}</i>`,
   ].join("\n");
 
   const rows: Button[][] = [
     [
-      { text: "📜 لاگ سیستم", callback_data: "a:sc:l:all" },
+      { text: "📜 رویدادها", callback_data: "a:sc:l:all" },
       { text: "⚠️ خطاها", callback_data: "a:sc:l:error" },
     ],
     [
-      { text: "🧾 Audit مدیران", callback_data: "a:sc:a" },
-      { text: "🔑 Sessionها", callback_data: "a:sc:s" },
+      { text: "🧾 کارهای مدیران", callback_data: "a:sc:a" },
+      { text: "🔑 گفتگوهای باز", callback_data: "a:sc:s" },
     ],
-    [{ text: "✅ چک‌لیست امنیتی", callback_data: "a:sc:c" }],
+    [{ text: "✅ بررسی امنیتی", callback_data: "a:sc:c" }],
     [{ text: "🏠 داشبورد", callback_data: "a:h" }],
   ];
   await editOrSend(ctx, text, keyboard(rows));
@@ -79,11 +103,11 @@ async function renderLogs(ctx: Ctx, level: string, page = 1): Promise<void> {
     (q) => level === "all" ? q : q.eq("level", level),
   );
 
-  const lines = logs.length === 0 ? ["<i>لاگی ثبت نشده است.</i>"] : logs.map((log) => {
+  const lines = logs.length === 0 ? ["<i>رویدادی ثبت نشده است.</i>"] : logs.map((log) => {
     const icon = log.level === "error" ? "❌" : log.level === "warn" ? "⚠️" : "ℹ️";
-    return `${icon} <code>${escapeHtml(log.scope)}</code> — ${
-      escapeHtml(truncate(log.message, 120))
-    }\n    ${faDateTime(log.created_at)}`;
+    return `${icon} ${friendlyScope(log.scope)} — ${friendlyMessage(log.level)}\n    ${
+      faDateTime(log.created_at)
+    }`;
   });
 
   const rows: Button[][] = [[
@@ -97,14 +121,14 @@ async function renderLogs(ctx: Ctx, level: string, page = 1): Promise<void> {
   }
   rows.push([
     { text: "🔄 به‌روزرسانی", callback_data: `a:sc:l:${level}` },
-    { text: "🛡 امنیت", callback_data: "a:sc" },
+    { text: "↩️ بازگشت", callback_data: "a:sc" },
   ]);
   rows.push([{ text: "🏠 داشبورد", callback_data: "a:h" }]);
 
   await editOrSend(
     ctx,
     [
-      sectionTitle(`📜 لاگ سیستم (${level})`),
+      sectionTitle(`📜 رویدادهای اخیر (${LEVEL_LABELS[level] ?? "همه"})`),
       divider(),
       ...lines,
       "",
@@ -113,6 +137,15 @@ async function renderLogs(ctx: Ctx, level: string, page = 1): Promise<void> {
     keyboard(rows),
   );
 }
+
+const ACTION_LABELS: Record<string, string> = {
+  sessions_purge: "پاک‌سازی گفتگوهای قدیمی",
+  role_update: "تغییر نقش مدیر",
+  ban_user: "مسدودکردن کاربر",
+  unban_user: "رفع مسدودی",
+  settings_update: "تغییر تنظیمات",
+  broadcast_send: "ارسال پیام همگانی",
+};
 
 async function renderAudit(ctx: Ctx, page = 1): Promise<void> {
   const size = 12;
@@ -124,13 +157,12 @@ async function renderAudit(ctx: Ctx, page = 1): Promise<void> {
   );
   const total = await countRows(ctx.sb, "admin_actions");
 
-  const lines = actions.length === 0
-    ? ["<i>اقدامی ثبت نشده است.</i>"]
-    : actions.map((action) =>
-      `• <b>${escapeHtml(action.action)}</b> توسط <code>${action.actor_id}</code>\n    ${
-        action.target_type ?? "—"
-      }: ${escapeHtml(action.target_id ?? "—")} • ${faDateTime(action.created_at)}`
-    );
+  const lines = actions.length === 0 ? ["<i>اقدامی ثبت نشده است.</i>"] : actions.map((action) => {
+    const label = ACTION_LABELS[action.action] ?? "اقدام مدیریتی";
+    return `• <b>${label}</b> توسط مدیر <code>${action.actor_id}</code>\n    ${
+      faDateTime(action.created_at)
+    }`;
+  });
 
   const rows: Button[][] = [];
   if (total > page * size) {
@@ -138,14 +170,14 @@ async function renderAudit(ctx: Ctx, page = 1): Promise<void> {
   }
   rows.push([
     { text: "🔄 به‌روزرسانی", callback_data: "a:sc:a" },
-    { text: "🛡 امنیت", callback_data: "a:sc" },
+    { text: "↩️ بازگشت", callback_data: "a:sc" },
   ]);
   rows.push([{ text: "🏠 داشبورد", callback_data: "a:h" }]);
 
   await editOrSend(
     ctx,
     [
-      sectionTitle("🧾 Audit اقدامات مدیران"),
+      sectionTitle("🧾 کارهای مدیران"),
       divider(),
       ...lines,
       "",
@@ -165,15 +197,15 @@ async function renderSessions(ctx: Ctx): Promise<void> {
   await editOrSend(
     ctx,
     [
-      sectionTitle("🔑 Sessionهای گفت‌وگو"),
+      sectionTitle("🔑 گفتگوهای باز"),
       divider(),
-      `فعال: ${faNum(active)}`,
-      `منقضی‌شده (نیازمند پاک‌سازی): ${faNum(expired)}`,
+      `باز: ${faNum(active)}`,
+      `قدیمی و آمادهٔ پاک‌سازی: ${faNum(expired)}`,
       "",
-      "<i>Sessionها فقط state گفت‌وگوهای چندمرحله‌ای را نگه می‌دارند و پس از انقضا خودکار حذف می‌شوند.</i>",
+      "<i>این‌ها فقط گفتگوهای نیمه‌کاره‌اند و خودشان پاک می‌شوند.</i>",
     ].join("\n"),
     keyboard([
-      [{ text: "🧹 پاک‌سازی sessionهای منقضی", callback_data: "a:sc:sp" }],
+      [{ text: "🧹 پاک‌سازی گفتگوهای قدیمی", callback_data: "a:sc:sp" }],
       [{ text: "◀️ بازگشت", callback_data: "a:sc" }],
     ]),
   );
@@ -181,24 +213,18 @@ async function renderSessions(ctx: Ctx): Promise<void> {
 
 async function renderChecklist(ctx: Ctx): Promise<void> {
   const text = [
-    sectionTitle("✅ چک‌لیست امنیتی"),
+    sectionTitle("✅ بررسی امنیتی"),
     divider(),
-    `${
-      ctx.cfg.webhookSecret ? "✅" : "❌"
-    } <b>TELEGRAM_WEBHOOK_SECRET</b> تنظیم شده و در setWebhook استفاده می‌شود.`,
-    `${
-      ctx.cfg.schedulerSecret ? "✅" : "❌"
-    } <b>SCHEDULER_SECRET</b> تنظیم شده و تابع scheduler فقط با آن اجرا می‌شود.`,
-    `${
-      ctx.cfg.superAdminIds.length > 0 ? "✅" : "❌"
-    } <b>SUPER_ADMIN_IDS</b> فقط شامل مالک اصلی است.`,
-    "✅ سرویس‌رول فقط در Edge Functions استفاده می‌شود؛ RLS روی همه جداول فعال است.",
-    "✅ هر callback مدیریتی مجوز را دوباره بررسی و در admin_actions ثبت می‌کند.",
-    "✅ عملیات حساس (حذف، مسدودسازی، ارسال همگانی) با توکن تأیید انجام می‌شود.",
-    "✅ مالک اصلی از طریق کد/داشبورد قابل حذف نیست.",
-    "✅ ورودی‌ها اعتبارسنجی و HTML آن‌ها escape می‌شود.",
+    `${ctx.cfg.webhookSecret ? "✅" : "⚠️"} ارتباط امن با تلگرام برقرار است.`,
+    `${ctx.cfg.schedulerSecret ? "✅" : "⚪️"} زمان‌بندی انتشار پیام فعال است.`,
+    `${ctx.cfg.superAdminIds.length > 0 ? "✅" : "⚠️"} مالک اصلی ربات مشخص است.`,
+    "✅ داده‌ها فقط از سمت سرور خوانده می‌شوند.",
+    "✅ هر کار مدیریتی دوباره بررسی و ثبت می‌شود.",
+    "✅ کارهای حساس (حذف، مسدودسازی، پیام همگانی) تأیید می‌خواهند.",
+    "✅ مالک اصلی قابل حذف نیست.",
+    "✅ متن‌ها پیش از نمایش پاک‌سازی می‌شوند.",
     "",
-    "<i>کلید API و Bot Token را هرگز در چت، کد یا فایل عمومی قرار ندهید؛ فقط Supabase Secrets.</i>",
+    "<i>رمزها و کلیدها هیچ‌وقت در چت یا فایل عمومی گذاشته نمی‌شوند.</i>",
   ].join("\n");
 
   await editOrSend(
@@ -246,7 +272,7 @@ export async function handleSecurityCallback(ctx: Ctx, parts: string[]): Promise
   if (sub === "sp") {
     const removed = await deleteExpiredSessions(ctx.sb, ctx.now);
     await logAdminAction(ctx, "sessions_purge", "session", undefined, { removed });
-    await answerCallback(ctx, `${faNum(removed)} session منقضی پاک شد.`);
+    await answerCallback(ctx, `${faNum(removed)} گفتگوی قدیمی پاک شد.`);
     await renderSessions(ctx);
     return true;
   }
@@ -264,6 +290,6 @@ export async function runSecurityConfirm(
   if (!(await guardAdmin(ctx, "security.read"))) return true;
   const removed = await deleteExpiredSessions(ctx.sb, ctx.now);
   await logAdminAction(ctx, "sessions_purge", "session", undefined, { removed });
-  await send(ctx, `🧹 ${faNum(removed)} session منقضی پاک شد.`);
+  await send(ctx, `🧹 ${faNum(removed)} گفتگوی قدیمی پاک شد.`);
   return true;
 }
