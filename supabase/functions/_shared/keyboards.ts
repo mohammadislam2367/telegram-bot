@@ -149,11 +149,11 @@ export function userMainKeyboard(options: UserMenuOptions): TgInlineKeyboardMark
   second.push(button("🎮 بازی و سرگرمی", "u:gm"));
   rows.push(second);
 
-  // دستهٔ ۳ — حساب کاربری و راهنما
-  rows.push([button("👤 پروفایل من", "u:pr"), button("ℹ️ راهنما", "u:hl")]);
+  // دستهٔ ۳ — حساب کاربری و ابزارها
+  rows.push([button("👤 پروفایل من", "u:pr"), button("🧰 جعبه‌ابزار", "u:tb")]);
 
   // دستهٔ ۴ — کانال و پشتیبانی
-  const fourth: Button[] = [];
+  const fourth: Button[] = [button("ℹ️ راهنما", "u:hl")];
   if (options.channelUrl) fourth.push(urlButton("📢 کانال", options.channelUrl));
   if (options.supportUrl) fourth.push(urlButton("💬 پشتیبانی", options.supportUrl));
   if (fourth.length > 0) rows.push(fourth);
