@@ -20,13 +20,15 @@ import {
   looksLikeAnimeInfoQuery,
 } from "./ai_fallback.ts";
 import { animeContextForAi, formatAnimeCard, searchAnime } from "./anime_data.ts";
+import { offlineAnswer } from "./offline_brain.ts";
+import { displayName } from "./texts.ts";
 import { escapeHtml, truncate } from "./validation.ts";
 import type { AiConversationRow, AiStateRow, AiUsageRow } from "./types.ts";
 
 export interface AiDeps {
   sb: SupabaseClient;
   settings: SettingsStore;
-  cfg: Pick<AppConfig, "geminiApiKey" | "geminiModel">;
+  cfg: Pick<AppConfig, "geminiApiKey" | "geminiModel" | "botUsername" | "superAdminIds">;
 }
 
 export interface AiReply {
@@ -210,6 +212,7 @@ const FALLBACK_NOTE_FA =
   "\n\n<i>ℹ️ پاسخ از دانش ذخیره‌شده ارائه شد (سرویس هوش مصنوعی موقتاً در دسترس نیست).</i>";
 const QUOTA_NOTE_FA =
   "\n\n<i>ℹ️ سهمیه روزانه‌ی هوش مصنوعی پر شده است؛ این پاسخ از دانش ذخیره‌شده است.</i>";
+const OFFLINE_NOTE_FA = "\n\n<i>⚡ حالت آفلاین: این پاسخ را موتور محلی ربات بدون اینترنت ساخت.</i>";
 
 export async function answerQuestion(deps: AiDeps, options: AnswerOptions): Promise<AiReply> {
   const { sb, settings, cfg } = deps;
@@ -249,7 +252,7 @@ export async function answerQuestion(deps: AiDeps, options: AnswerOptions): Prom
   }
 
   if (!shouldTryProvider) {
-    const reply = await buildFallbackReply(sb, settings, options.text, language, {
+    const reply = await buildFallbackReply(sb, settings, cfg, options.text, language, {
       quotaExhausted: overQuota || state.status === "quota_exhausted",
       reason: !apiConfigured ? "not_configured" : overQuota ? "daily_quota" : "provider_cooldown",
     });
@@ -324,7 +327,7 @@ export async function answerQuestion(deps: AiDeps, options: AnswerOptions): Prom
       errorCode: providerError.code,
     });
 
-    const reply = await buildFallbackReply(sb, settings, options.text, language, {
+    const reply = await buildFallbackReply(sb, settings, cfg, options.text, language, {
       quotaExhausted: providerError.quota,
       reason: providerError.quota ? "provider_quota" : "provider_error",
     });
@@ -353,21 +356,51 @@ async function persistAssistant(
 async function buildFallbackReply(
   sb: SupabaseClient,
   settings: SettingsStore,
+  cfg: Pick<AppConfig, "botUsername" | "superAdminIds">,
   question: string,
   language: "fa" | "en",
   meta: { quotaExhausted: boolean; reason: string },
 ): Promise<AiReply> {
-  const match = findFallback(question, { language });
-  const parts: string[] = [];
+  const timeZone = await settings.get("timezone");
+  const ownerId = cfg.superAdminIds[0];
 
-  if (match) {
-    parts.push(match.answer);
-  } else {
-    parts.push(genericFallback(language));
+  // فقط برای سوال درباره‌ی صاحب ربات، نام مالک از دیتابیس خوانده می‌شود.
+  let ownerName: string | undefined;
+  if (ownerId && /(صاحب|مالک|owner|admin|مدیر)/i.test(question)) {
+    const ownerRow = await selectOne<
+      { first_name: string | null; last_name: string | null; username: string | null }
+    >(sb, "users", (q) => q.eq("telegram_id", ownerId));
+    if (ownerRow) ownerName = displayName(ownerRow);
   }
 
-  if (await settings.get("ai_anime_context")) {
-    if (!match || match.category === "title_info") {
+  // ۱) موتور آفلاین (کارهای واقعی: محاسبه، ساعت، تصادفی، …)
+  const offline = offlineAnswer(question, {
+    timeZone,
+    botUsername: cfg.botUsername,
+    ownerName,
+    ownerId,
+  });
+
+  const parts: string[] = [];
+  let category = "";
+
+  if (offline) {
+    parts.push(offline.text);
+    parts.push(OFFLINE_NOTE_FA);
+    category = offline.category;
+  } else {
+    // ۲) دانش ذخیره‌شده (FAQ)
+    const match = findFallback(question, { language });
+    if (match) {
+      parts.push(match.answer);
+      category = match.category;
+    } else {
+      parts.push(genericFallback(language));
+    }
+  }
+
+  if (!offline && await settings.get("ai_anime_context")) {
+    if (category === "" || category === "title_info") {
       const query = question.replace(/انیمه|anime|اطلاعات|چیست|چیه/gi, "").trim();
       if (query.length >= 2) {
         const results = await searchAnime(query, { limit: 1, sb });
@@ -379,7 +412,7 @@ async function buildFallbackReply(
   }
 
   if (meta.quotaExhausted) parts.push(QUOTA_NOTE_FA);
-  else if (meta.reason !== "not_configured") parts.push(FALLBACK_NOTE_FA);
+  else if (meta.reason !== "not_configured" && !offline) parts.push(FALLBACK_NOTE_FA);
 
   return {
     text: truncate(parts.join(""), 3900),
