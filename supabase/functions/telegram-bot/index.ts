@@ -16,6 +16,7 @@ import { handleChannelPost } from "./channels.ts";
 import { handleGamesMessage, handleQuizCallback } from "./games.ts";
 import { handleBotGuard } from "./guard.ts";
 import { handleGroupIntro } from "./group_intro.ts";
+import { BOT_COMMANDS, handleQuickCallback, handleQuickMessage } from "./quick.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
@@ -97,7 +98,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // باز کردن همین آدرس در مرورگر، Webhook ناقص را خودکار ترمیم می‌کند.
     try {
       const cfg = loadConfig();
-      const webhook = await syncWebhook(cfg, new TelegramApi(cfg.botToken));
+      const tg = new TelegramApi(cfg.botToken);
+      const webhook = await syncWebhook(cfg, tg);
+      // ثبت دستورها در منوی رسمی تلگرام (idempotent).
+      try {
+        await tg.setMyCommands(BOT_COMMANDS);
+      } catch {
+        // ثبت منو اختیاری است
+      }
 
       return jsonResponse({
         ok: true,
@@ -169,9 +177,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
       log.warn("channel update failed", { error: (error as Error).message })
     )
     : (async (): Promise<void> => {
-      // بازی‌ها و نگهبان ضد ربات قبل از مسیر اصلی بررسی می‌شوند.
+      // دستورهای سریع، بازی‌ها و نگهبان ضد ربات قبل از مسیر اصلی بررسی می‌شوند.
+      if (
+        update.callback_query &&
+        await handleQuickCallback({ ...extras, settings }, update.callback_query)
+      ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
+      if (update.message && await handleQuickMessage({ ...extras, settings }, update.message)) {
+        return;
+      }
       if (update.message && await handleGroupIntro(extras, update.message)) return;
       if (update.message && await handleGamesMessage(extras, update.message)) return;
       await runWithErrorHandling(deps, update);
