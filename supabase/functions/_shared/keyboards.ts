@@ -94,7 +94,12 @@ export const ADMIN_MENU_SECTIONS: readonly AdminMenuSection[] = [
     permission: "content.read",
     feature: "content",
   },
-  { label: "👮 مدیریت گروه", callbackData: "a:gr", permission: "groups.read", feature: "groups" },
+  {
+    label: "👮 مدیریت گروه و کانال",
+    callbackData: "a:gr",
+    permission: "groups.read",
+    feature: "groups",
+  },
   { label: "⚙️ تنظیمات ربات", callbackData: "a:se", permission: "settings.manage" },
   { label: "🛡 امنیت و گزارش فعالیت", callbackData: "a:sc", permission: "security.read" },
   { label: "🧰 ابزارهای سیستم", callbackData: "a:tl", permission: "tools.use" },
