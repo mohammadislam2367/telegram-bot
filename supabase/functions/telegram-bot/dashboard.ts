@@ -18,7 +18,7 @@ import {
 } from "../_shared/texts.ts";
 import { startOfDayIso } from "../_shared/rate_limit.ts";
 import { answerCallback, type Ctx, editOrSend, isPrivate, send } from "./context.ts";
-import type { AiStateRow } from "../_shared/types.ts";
+import type { AiStateRow, UserRow } from "../_shared/types.ts";
 
 async function enabledFeatures(ctx: Ctx): Promise<Record<string, boolean>> {
   const all = await ctx.settings.all();
@@ -151,12 +151,20 @@ export async function renderUserHome(ctx: Ctx, customTitle?: string): Promise<vo
   const text = [
     customTitle ? `<b>${customTitle}</b>` : "",
     customTitle ? "" : `سلام <b>${name}</b> 👋`,
+    ctx.admin ? `👑 نقش شما در ربات: <b>${ROLE_LABELS[ctx.admin.role]}</b>` : "",
     welcome,
     "",
     "<i>با دکمه‌های زیر شروع کنید یا همین‌جا سوال خود را بنویسید.</i>",
   ].filter(Boolean).join("\n");
 
-  await send(ctx, text, buildUserMenuMarkup(channelUrl, groupUrl, features));
+  const markup = buildUserMenuMarkup(channelUrl, groupUrl, features);
+  if (ctx.admin) {
+    markup.inline_keyboard.unshift([
+      { text: "🎛 داشبورد مدیریت", callback_data: "a:h" },
+    ]);
+  }
+
+  await send(ctx, text, markup);
 }
 
 export async function renderUserHelp(ctx: Ctx): Promise<void> {
@@ -171,6 +179,10 @@ export async function renderUserHelp(ctx: Ctx): Promise<void> {
     "• <b>حریم خصوصی</b>: <code>/privacy</code>",
     "• <b>توقف پیام‌ها</b>: <code>/stop</code>",
     "• <b>حذف داده‌ها</b>: <code>/deletedata</code>",
+    "• <b>صاحب ربات</b>: <code>/owner</code>",
+    ctx.admin?.role === "owner"
+      ? "• <b>متن اخطار گروه‌ها</b>: <code>/warning</code> یا بنویسید <code>اخطار متن…</code>"
+      : "",
     "",
     features.anime
       ? "<i>اطلاعات انیمه از Jikan (MyAnimeList) گرفته می‌شود و ممکن است چند ساعت تأخیر داشته باشد.</i>"
@@ -183,6 +195,77 @@ export async function renderUserHelp(ctx: Ctx): Promise<void> {
     lines.join("\n"),
     keyboard([
       [{ text: "🏠 منوی اصلی", callback_data: "u:m" }],
+    ]),
+  );
+}
+
+/** 👑 پنل صاحب ربات — تشخیص مالک و میان‌برهای اختصاصی. */
+export async function renderOwnerPanel(ctx: Ctx): Promise<void> {
+  if (!isPrivate(ctx)) {
+    await send(ctx, "👑 پنل صاحب ربات فقط در چت خصوصی باز می‌شود.", {
+      inline_keyboard: [[{
+        text: "🤖 ورود به ربات",
+        url: `https://t.me/${ctx.cfg.botUsername}?start=owner`,
+      }]],
+    });
+    return;
+  }
+
+  const support = await ctx.settings.get("support_username");
+
+  if (ctx.admin?.role !== "owner") {
+    await send(
+      ctx,
+      [
+        sectionTitle("👑 صاحب ربات"),
+        divider(),
+        "این ربات صاحب مشخصی دارد و توسط تیم پشتیبانی اداره می‌شود.",
+        support ? `📮 پشتیبانی: ${support}` : "",
+        "",
+        "<i>دستورات مدیریتی فقط برای صاحب ربات فعال است.</i>",
+      ].filter(Boolean).join("\n"),
+      keyboard([
+        [{ text: "🏠 منوی اصلی", callback_data: "u:m" }],
+      ]),
+    );
+    return;
+  }
+
+  const ownerId = ctx.cfg.superAdminIds[0];
+  const [ownerRow, users] = await Promise.all([
+    selectOne<Pick<UserRow, "first_name" | "last_name" | "username">>(
+      ctx.sb,
+      "users",
+      (q) => q.eq("telegram_id", ownerId),
+    ),
+    countRows(ctx.sb, "users"),
+  ]);
+
+  const ownerName = ownerRow ? displayName(ownerRow) : displayName(ctx.user);
+  const timeZone = await ctx.settings.get("timezone");
+
+  await send(
+    ctx,
+    [
+      sectionTitle("👑 پنل صاحب ربات"),
+      divider(),
+      `سلام <b>${ownerName}</b> — شما صاحب این ربات هستید.`,
+      `شناسه مالک: <code>${ownerId}</code> • کاربران ربات: ${faNum(users)}`,
+      `زمان: ${faDateTime(ctx.now, timeZone)}`,
+      "",
+      "<b>دستورات اختصاصی شما</b>",
+      "• <code>اخطار متن دلخواه…</code> — ثبت متن اخطار گروه‌ها",
+      "• <code>/warning</code> — مشاهده و تغییر متن اخطار",
+      "• <code>/admin</code> — داشبورد کامل مدیریت",
+      "",
+      "<i>ربات شما را می‌شناسد: در گروه‌ها اخطارها و گزارش‌ها با نام شما ثبت می‌شود.</i>",
+    ].join("\n"),
+    keyboard([
+      [{ text: "🎛 داشبورد مدیریت", callback_data: "a:h" }],
+      [{ text: "⚠️ متن اخطار", callback_data: "u:wn" }, {
+        text: "🏠 منوی اصلی",
+        callback_data: "u:m",
+      }],
     ]),
   );
 }
