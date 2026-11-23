@@ -11,7 +11,8 @@
  * متغیرهای مجاز: {name} {count} {limit} {group} {bot}
  */
 import { DEFAULT_SETTINGS } from "../_shared/settings.ts";
-import { containsProfanity } from "../_shared/profanity.ts";
+import { containsProfanity, isDirectedAtBot } from "../_shared/profanity.ts";
+import { insertRow, selectOne } from "../_shared/db.ts";
 import { keyboard } from "../_shared/keyboards.ts";
 import { divider, faNum, sectionTitle } from "../_shared/texts.ts";
 import { escapeHtml, sanitizeText } from "../_shared/validation.ts";
@@ -133,8 +134,8 @@ async function saveWarning(ctx: Ctx, raw: string): Promise<void> {
       "",
       HELP_HINT,
       "",
-      "<i>از این به بعد ربات همین متن را به متخلف می‌دهد؛ هم برای اخطار دستی " +
-      "<code>/warn</code> و هم وقتی کسی به ربات توهین کند.</i>",
+      "<i>از این به بعد هر وقت کسی در گروه یا چت خصوصی به ربات توهین کند، " +
+      "ربات همین متن را خطاب به او می‌فرستد.</i>",
     ].join("\n"),
     keyboard([
       [{ text: "🏠 منوی اصلی", callback_data: "u:m" }, { text: "🎛 داشبورد", callback_data: "a:h" }],
@@ -169,6 +170,81 @@ export async function handleOwnerWarningCommand(ctx: Ctx, args: string): Promise
     return true;
   }
   await saveWarning(ctx, value);
+  return true;
+}
+
+/**
+ * توهین مستقیم به ربات در گروه (ریپلای یا منشن) → همان متن اخطار صاحب ربات.
+ * اگر پیام به ربات نباشد یا فحش نداشته باشد، false برمی‌گرداند تا مسیر
+ * عادی مدیریت گروه ادامه پیدا کند.
+ */
+export async function handleGroupInsult(ctx: Ctx): Promise<boolean> {
+  const message = ctx.update.message;
+  if (!message?.from || message.from.is_bot) return false;
+
+  const text = message.text ?? message.caption ?? "";
+  if (text.length === 0) return false;
+  if (!isDirectedAtBot(message, ctx.cfg.botUsername)) return false;
+  if (!containsProfanity(text)) return false;
+
+  const decision = ctx.limiter.hit(
+    `bot-insult:${ctx.chatId}:${message.from.id}`,
+    1,
+    15_000,
+    ctx.now.getTime(),
+  );
+  if (!decision.allowed) return true;
+
+  const settings = await selectOne<{ warn_limit: number; delete_warn_messages: boolean }>(
+    ctx.sb,
+    "group_settings",
+    (q) => q.eq("group_id", ctx.chatId),
+  );
+  const group = await selectOne<{ title: string | null }>(
+    ctx.sb,
+    "groups",
+    (q) => q.eq("telegram_chat_id", ctx.chatId),
+  );
+
+  const warning = await renderWarning(ctx, {
+    name: userNameLink(message.from),
+    count: 1,
+    limit: settings?.warn_limit ?? 3,
+    group: group?.title ?? "",
+    bot: ctx.cfg.botUsername,
+  });
+
+  try {
+    await ctx.tg.sendMessage(ctx.chatId, warning, {
+      preview: false,
+      replyTo: message.message_id,
+      silent: true,
+    });
+  } catch {
+    // اگر ربات نتوانست پاسخ دهد، مسیر عادی ادامه می‌یابد
+  }
+
+  if (settings?.delete_warn_messages) {
+    try {
+      await ctx.tg.deleteMessage(ctx.chatId, message.message_id);
+    } catch {
+      // بدون دسترسی حذف، فقط اخطار ارسال می‌شود
+    }
+  }
+
+  try {
+    await insertRow(ctx.sb, "moderation_logs", {
+      group_id: ctx.chatId,
+      target_user_id: message.from.id,
+      actor_id: ctx.userId,
+      action: "bot_warning",
+      reason: "توهین به ربات",
+      metadata: { messageId: message.message_id },
+    });
+  } catch {
+    // لاگ اختیاری است
+  }
+
   return true;
 }
 
