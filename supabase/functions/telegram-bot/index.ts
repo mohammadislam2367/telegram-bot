@@ -12,12 +12,14 @@ import { limiter } from "../_shared/rate_limit.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import type { TgUpdate } from "../_shared/types.ts";
 import { runWithErrorHandling } from "./router.ts";
+import { handleChannelPost } from "./channels.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
   "edited_message",
+  "channel_post",
   "callback_query",
   "chat_member",
   "my_chat_member",
@@ -46,8 +48,8 @@ async function syncWebhook(cfg: AppConfig, tg: TelegramApi): Promise<WebhookSnap
   };
 
   const allowedUpdates = info.allowed_updates ?? [];
-  const healthy = info.url === expectedUrl &&
-    allowedUpdates.includes("callback_query");
+  const missing = WEBHOOK_ALLOWED_UPDATES.filter((name) => !allowedUpdates.includes(name));
+  const healthy = info.url === expectedUrl && missing.length === 0;
 
   if (healthy || !cfg.webhookSecret) {
     return {
@@ -71,9 +73,10 @@ async function syncWebhook(cfg: AppConfig, tg: TelegramApi): Promise<WebhookSnap
     allowed_updates?: string[];
   };
   const afterAllowed = after.allowed_updates ?? [];
+  const stillMissing = WEBHOOK_ALLOWED_UPDATES.filter((name) => !afterAllowed.includes(name));
 
   return {
-    ok: after.url === expectedUrl && afterAllowed.includes("callback_query"),
+    ok: after.url === expectedUrl && stillMissing.length === 0,
     repaired: true,
     urlConfigured: Boolean(after.url),
     callbackQueryAllowed: afterAllowed.includes("callback_query"),
@@ -155,10 +158,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const settings = new SettingsStore(sb);
   const groupAdmins = new GroupAdminChecker(tg);
 
-  const processing = runWithErrorHandling(
-    { cfg, sb, tg, settings, log, groupAdmins, limiter },
-    update,
-  );
+  const deps = { cfg, sb, tg, settings, log, groupAdmins, limiter };
+  // پست‌های کانال فرستنده (from) ندارند؛ مسیر مدیریت کانال مستقل از router اجرا می‌شود.
+  const processing = update.channel_post
+    ? handleChannelPost({ cfg, sb, tg, log }, update.channel_post).catch((error: unknown) =>
+      log.warn("channel update failed", { error: (error as Error).message })
+    )
+    : runWithErrorHandling(deps, update);
 
   const runtime = edgeRuntime();
   if (runtime?.waitUntil) {
