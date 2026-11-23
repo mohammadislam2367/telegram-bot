@@ -13,6 +13,8 @@ import { jsonResponse } from "../_shared/http.ts";
 import type { TgUpdate } from "../_shared/types.ts";
 import { runWithErrorHandling } from "./router.ts";
 import { handleChannelPost } from "./channels.ts";
+import { handleGamesMessage, handleQuizCallback } from "./games.ts";
+import { handleBotGuard } from "./guard.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
 
@@ -159,12 +161,19 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const groupAdmins = new GroupAdminChecker(tg);
 
   const deps = { cfg, sb, tg, settings, log, groupAdmins, limiter };
+  const extras = { cfg, sb, tg, log };
   // پست‌های کانال فرستنده (from) ندارند؛ مسیر مدیریت کانال مستقل از router اجرا می‌شود.
   const processing = update.channel_post
-    ? handleChannelPost({ cfg, sb, tg, log }, update.channel_post).catch((error: unknown) =>
+    ? handleChannelPost(extras, update.channel_post).catch((error: unknown) =>
       log.warn("channel update failed", { error: (error as Error).message })
     )
-    : runWithErrorHandling(deps, update);
+    : (async (): Promise<void> => {
+      // بازی‌ها و نگهبان ضد ربات قبل از مسیر اصلی بررسی می‌شوند.
+      if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
+      if (await handleBotGuard(extras, update)) return;
+      if (update.message && await handleGamesMessage(extras, update.message)) return;
+      await runWithErrorHandling(deps, update);
+    })();
 
   const runtime = edgeRuntime();
   if (runtime?.waitUntil) {
