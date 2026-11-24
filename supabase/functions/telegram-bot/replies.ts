@@ -1,7 +1,7 @@
 /**
- * 💬 پاسخ به ریپلای — اگر کسی روی پیام خودِ ربات ریپلای کند، ربات جواب می‌دهد.
- * اگر هوش مصنوعی روشن باشد پاسخ با هوش مصنوعی ساخته می‌شود؛ در غیر این صورت
- * (خاموش یا پر بودن سهمیه) موتور سریع داخلی همان‌جا جواب می‌دهد.
+ * 💬 پاسخ در گروه — وقتی ربات را منشن کنند یا کسی روی پیامش ریپلای کند،
+ * ربات جواب می‌دهد. اگر هوش مصنوعی روشن باشد پاسخ با هوش مصنوعی ساخته
+ * می‌شود؛ در غیر این صورت موتور سریع داخلی همان‌جا جواب می‌دهد.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppConfig } from "../_shared/config.ts";
@@ -12,6 +12,7 @@ import type { TgMessage } from "../_shared/types.ts";
 import { answerQuestion, dailyAiRequests } from "../_shared/ai_core.ts";
 import { offlineAnswer } from "../_shared/offline_brain.ts";
 import { keyboard, urlButton } from "../_shared/keyboards.ts";
+import { divider, sectionTitle } from "../_shared/texts.ts";
 import type { SlidingWindowLimiter } from "../_shared/rate_limit.ts";
 
 export interface ReplyDeps {
@@ -29,6 +30,41 @@ export function isReplyToBot(cfg: AppConfig, message: TgMessage): boolean {
   if (!target?.is_bot) return false;
   const username = (target.username ?? "").toLowerCase();
   return username.length > 0 && username === cfg.botUsername.toLowerCase();
+}
+
+function mentionRegex(botUsername: string): RegExp {
+  const escaped = botUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`@${escaped}(?![A-Za-z0-9_])`, "gi");
+}
+
+/**
+ * آیا ربات مخاطب قرار گرفته است؟
+ * ریپلای روی پیام ربات، یا منشن @ربات در هر جای متن — منشن حتی وقتی
+ * privacy mode روشن است به دست ربات می‌رسد، پس گروه‌ها همین‌طور کار می‌کنند.
+ */
+export function botIsAddressed(cfg: AppConfig, message: TgMessage): boolean {
+  if (isReplyToBot(cfg, message)) return true;
+  const text = `${message.text ?? ""}\n${message.caption ?? ""}`;
+  if (!text.trim()) return false;
+  return mentionRegex(cfg.botUsername).test(text);
+}
+
+/** منشن ربات را از متن حذف می‌کند تا سوال خالص بماند. */
+export function stripMention(cfg: AppConfig, text: string): string {
+  return text.replace(mentionRegex(cfg.botUsername), " ").replace(/\s+/g, " ").trim();
+}
+
+/** وقتی فقط منشن بدون سوال می‌آید، کارت راهنمای کوتاه. */
+function mentionCard(): string {
+  return [
+    sectionTitle("🤖 در خدمتم"),
+    "سوالت را بعد از منشن بنویس؛ همان لحظه جواب می‌دهم.",
+    divider(),
+    "• <b>بیو</b> · <b>ساعت</b> · <b>تاریخ</b> · <b>آیدی</b> · <b>تاس</b> · <b>جمله</b>",
+    "• <b>پیشنهاد انیمه</b> · <b>رمز بساز</b> · <b>عدد شانسی</b> · <b>راهنما</b>",
+    "",
+    "<i>مدیران گروه: /panel برای پنل مدیریت گروه</i>",
+  ].join("\n");
 }
 
 /** پاسخ سریع محلی، بدون هیچ اشاره‌ای به حالت یا نسخهٔ خاص. */
@@ -80,14 +116,37 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
   const chat = message.chat;
   // در چت خصوصی، مسیر عادی ربات خودش جواب می‌دهد.
   if (chat.type === "private") return false;
-  if (!isReplyToBot(deps.cfg, message)) return false;
+  if (!botIsAddressed(deps.cfg, message)) return false;
 
-  const text = (message.text ?? message.caption ?? "").trim();
-  if (!text || text.startsWith("/")) return false;
+  const raw = (message.text ?? message.caption ?? "").trim();
+  if (!raw || raw.startsWith("/")) return false;
 
   const from = message.from;
   // پیام‌های سرویس (بدون فرستنده) یا فرستندهٔ ربات را جواب نمی‌دهیم.
   if (!from || from.is_bot) return false;
+
+  const text = stripMention(deps.cfg, raw);
+  if (!text) {
+    try {
+      await deps.tg.sendMessage(chat.id, mentionCard(), {
+        preview: false,
+        replyTo: message.message_id,
+        markup: keyboard([[
+          urlButton(
+            "🤖 گفتگوی خصوصی",
+            `https://t.me/${deps.cfg.botUsername}?start=group`,
+            "primary",
+          ),
+        ]]),
+      });
+    } catch (error) {
+      await deps.log.warn("mention card failed", {
+        chatId: chat.id,
+        error: (error as Error).message,
+      });
+    }
+    return true;
+  }
 
   let timeZone = "Asia/Tehran";
   try {
