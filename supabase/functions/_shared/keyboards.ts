@@ -4,12 +4,14 @@ import type { TgInlineKeyboardButton, TgInlineKeyboardMarkup } from "./types.ts"
 
 export type Button = TgInlineKeyboardButton;
 
-export function button(text: string, callbackData: string): Button {
-  return { text, callback_data: callbackData };
+export type ButtonStyle = "danger" | "success" | "primary";
+
+export function button(text: string, callbackData: string, style?: ButtonStyle): Button {
+  return style ? { text, callback_data: callbackData, style } : { text, callback_data: callbackData };
 }
 
-export function urlButton(text: string, url: string): Button {
-  return { text, url };
+export function urlButton(text: string, url: string, style?: ButtonStyle): Button {
+  return style ? { text, url, style } : { text, url };
 }
 
 export function keyboard(rows: Button[][]): TgInlineKeyboardMarkup {
@@ -17,7 +19,7 @@ export function keyboard(rows: Button[][]): TgInlineKeyboardMarkup {
 }
 
 export function backButton(callbackData = "a:h", label = "↩️ بازگشت"): Button {
-  return button(label, callbackData);
+  return button(label, callbackData, "danger");
 }
 
 export function backRow(callbackData = "a:h"): Button[] {
@@ -26,9 +28,68 @@ export function backRow(callbackData = "a:h"): Button[] {
 
 export function confirmKeyboard(confirmData: string, cancelData: string): TgInlineKeyboardMarkup {
   return keyboard([
-    [button("✅ تأیید و اجرا", confirmData)],
-    [button("❌ انصراف", cancelData)],
+    [button("✅ تأیید و اجرا", confirmData, "success")],
+    [button("❌ انصراف", cancelData, "danger")],
   ]);
+}
+
+const HOME_LABELS = ["داشبورد", "منوی اصلی"];
+const BACK_LABEL = "بازگشت";
+
+function isBackButton(btn: Button): boolean {
+  return btn.text.includes(BACK_LABEL);
+}
+
+function isHomeButton(btn: Button): boolean {
+  return HOME_LABELS.some((label) => btn.text.includes(label));
+}
+
+/**
+ * تضمین دکمهٔ «↩️ بازگشت» در همهٔ پنل‌ها.
+ * اگر پنل از قبل دکمهٔ بازگشت داشته باشد فقط رنگ آن اصلاح می‌شود؛
+ * اگر ردیف خانه (داشبورد/منوی اصلی) وجود داشته باشد بازگشت کنار آن می‌نشیند.
+ */
+export function ensureBackButton(
+  markup: TgInlineKeyboardMarkup | undefined,
+  backTo: string,
+): TgInlineKeyboardMarkup | undefined {
+  if (!markup) return markup;
+  const rows = markup.inline_keyboard.map((row) => row.map((btn) => ({ ...btn })));
+  if (rows.length === 0) return markup;
+
+  const flat = rows.flat();
+  if (flat.some(isBackButton)) {
+    for (const row of rows) {
+      for (const btn of row) if (isBackButton(btn)) btn.style = "danger";
+    }
+    return { inline_keyboard: rows };
+  }
+
+  const back = backButton(backTo);
+  for (const row of rows) {
+    if (row.length === 1 && isHomeButton(row[0])) {
+      row.unshift(back);
+      return { inline_keyboard: rows };
+    }
+  }
+
+  rows.push([back]);
+  return { inline_keyboard: rows };
+}
+
+/** رنگ‌آمیزی یکپارچه: بازگشت قرمز، تأیید سبز، بقیه آبی. */
+export function styleKeyboard(
+  markup: TgInlineKeyboardMarkup,
+): TgInlineKeyboardMarkup {
+  return {
+    inline_keyboard: markup.inline_keyboard.map((row) =>
+      row.map((btn) => {
+        if (btn.style) return btn;
+        if (isBackButton(btn)) return { ...btn, style: "danger" };
+        return btn;
+      })
+    ),
+  };
 }
 
 export function navigationKeyboard(options: {
@@ -37,19 +98,19 @@ export function navigationKeyboard(options: {
   refresh?: string;
 }): Button[][] {
   const rows: Button[][] = [];
-  if (options.refresh) rows.push([button("🔄 به‌روزرسانی", options.refresh)]);
+  if (options.refresh) rows.push([button("🔄 به‌روزرسانی", options.refresh, "primary")]);
   const nav: Button[] = [];
   if (options.back) nav.push(backButton(options.back));
-  if (options.home !== false) nav.push(button("🏠 داشبورد", "a:h"));
+  if (options.home !== false) nav.push(button("🏠 داشبورد", "a:h", "success"));
   if (nav.length > 0) rows.push(nav);
   return rows;
 }
 
 export function paginationRow(prefix: string, page: number, hasNext: boolean): Button[] {
   const row: Button[] = [];
-  if (page > 1) row.push(button("◀️ قبلی", `${prefix}:${page - 1}`));
+  if (page > 1) row.push(button("◀️ قبلی", `${prefix}:${page - 1}`, "primary"));
   row.push(button(`صفحه ${page}`, "noop"));
-  if (hasNext) row.push(button("بعدی ▶️", `${prefix}:${page + 1}`));
+  if (hasNext) row.push(button("بعدی ▶️", `${prefix}:${page + 1}`, "primary"));
   return row;
 }
 
@@ -116,11 +177,11 @@ export function adminMainKeyboard(
 
   const rows: Button[][] = [];
   for (let i = 0; i < sections.length; i += 2) {
-    const pair = sections.slice(i, i + 2).map((s) => button(s.label, s.callbackData));
+    const pair = sections.slice(i, i + 2).map((s) => button(s.label, s.callbackData, "primary"));
     rows.push(pair);
   }
   rows.push([
-    button("🔄 به‌روزرسانی داشبورد", "a:h"),
+    button("🔄 به‌روزرسانی داشبورد", "a:h", "success"),
     button("👤 پروفایل مدیر", "a:me"),
   ]);
   return keyboard(rows);
@@ -139,26 +200,30 @@ export function userMainKeyboard(options: UserMenuOptions): TgInlineKeyboardMark
 
   // دستهٔ ۱ — سرگرمی و محتوا
   const first: Button[] = [];
-  if (options.showAi) first.push(button("🤖 چت هوشمند", "u:ai"));
-  if (options.showAnime) first.push(button("🔎 جستجوی انیمه", "u:an"));
+  if (options.showAi) first.push(button("🤖 چت هوشمند", "u:ai", "primary"));
+  if (options.showAnime) first.push(button("🔎 جستجوی انیمه", "u:an", "primary"));
   if (first.length > 0) rows.push(first);
 
   // دستهٔ ۲ — خبر و بازی
   const second: Button[] = [];
-  if (options.showNews) second.push(button("📰 آخرین اخبار", "u:nw"));
-  second.push(button("🎮 بازی و سرگرمی", "u:gm"));
+  if (options.showNews) second.push(button("📰 آخرین اخبار", "u:nw", "primary"));
+  second.push(button("🎮 بازی و سرگرمی", "u:gm", "primary"));
   rows.push(second);
 
-  // دستهٔ ۳ — حساب کاربری و ابزارها
-  rows.push([button("👤 پروفایل من", "u:pr"), button("🧰 جعبه‌ابزار", "u:tb")]);
+  // دستهٔ ۳ — حساب کاربری، کارت معرفی و ابزارها
+  rows.push([
+    button("👤 پروفایل من", "u:pr", "primary"),
+    button("🧬 کارت معرفی", "u:bi", "primary"),
+  ]);
+  rows.push([button("🧰 جعبه‌ابزار", "u:tb", "primary"), button("ℹ️ راهنما", "u:hl", "primary")]);
 
   // دستهٔ ۴ — کانال و پشتیبانی
-  const fourth: Button[] = [button("ℹ️ راهنما", "u:hl")];
-  if (options.channelUrl) fourth.push(urlButton("📢 کانال", options.channelUrl));
-  if (options.supportUrl) fourth.push(urlButton("💬 پشتیبانی", options.supportUrl));
+  const fourth: Button[] = [];
+  if (options.channelUrl) fourth.push(urlButton("📢 کانال", options.channelUrl, "primary"));
+  if (options.supportUrl) fourth.push(urlButton("💬 پشتیبانی", options.supportUrl, "success"));
   if (fourth.length > 0) rows.push(fourth);
 
   // دستهٔ ۵ — تنظیم پیام‌ها
-  rows.push([button("🔕 توقف پیام‌ها", "u:st")]);
+  rows.push([button("🔕 توقف پیام‌ها", "u:st", "danger")]);
   return keyboard(rows);
 }
