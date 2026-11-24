@@ -142,7 +142,7 @@ export async function renderUserHome(ctx: Ctx, customTitle?: string): Promise<vo
   const markup = buildUserMenuMarkup(channelUrl, groupUrl, features);
   if (ctx.admin) {
     markup.inline_keyboard.unshift([
-      { text: "🎛 داشبورد مدیریت", callback_data: "a:h" },
+      { text: "🎛 داشبورد مدیریت", callback_data: "a:h", style: "success" },
     ]);
   }
 
@@ -156,6 +156,8 @@ export async function renderUserHelp(ctx: Ctx): Promise<void> {
     divider(),
     "• <b>چت هوشمند</b>: دکمه 🤖 یا <code>/ai سوال</code>",
     "• <b>جستجوی انیمه</b>: دکمه 🔎 یا <code>/anime نام</code>",
+    "• <b>کارت معرفی</b>: دکمه 🧬 یا <code>/bio</code>",
+    "• <b>بازی و ابزار</b>: <code>/games</code> و <code>/toolbox</code>",
     "• <b>اخبار</b>: <code>/news</code>",
     "• <b>پروفایل</b>: <code>/profile</code>",
     "• <b>حریم خصوصی</b>: <code>/privacy</code>",
@@ -206,9 +208,10 @@ export async function renderOwnerPanel(ctx: Ctx): Promise<void> {
         "",
         "<i>دستورات مدیریتی فقط برای صاحب ربات فعال است.</i>",
       ].filter(Boolean).join("\n"),
-      keyboard([
-        [{ text: "🏠 منوی اصلی", callback_data: "u:m" }],
-      ]),
+      keyboard([[
+        { text: "↩️ بازگشت", callback_data: "u:m", style: "danger" },
+        { text: "🏠 منوی اصلی", callback_data: "u:m", style: "success" },
+      ]]),
     );
     return;
   }
@@ -243,11 +246,12 @@ export async function renderOwnerPanel(ctx: Ctx): Promise<void> {
       "<i>ربات شما را می‌شناسد: در گروه‌ها اخطارها و گزارش‌ها با نام شما ثبت می‌شود.</i>",
     ].join("\n"),
     keyboard([
-      [{ text: "🎛 داشبورد مدیریت", callback_data: "a:h" }],
-      [{ text: "⚠️ متن اخطار", callback_data: "u:wn" }, {
-        text: "🏠 منوی اصلی",
-        callback_data: "u:m",
-      }],
+      [{ text: "🎛 داشبورد مدیریت", callback_data: "a:h", style: "primary" }],
+      [
+        { text: "⚠️ متن اخطار", callback_data: "u:wn", style: "primary" },
+        { text: "🏠 منوی اصلی", callback_data: "u:m", style: "success" },
+      ],
+      [{ text: "↩️ بازگشت", callback_data: "u:m", style: "danger" }],
     ]),
   );
 }
