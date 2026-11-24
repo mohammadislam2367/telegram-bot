@@ -16,7 +16,12 @@ import { handleChannelPost } from "./channels.ts";
 import { handleGamesMessage, handleQuizCallback } from "./games.ts";
 import { handleBotGuard } from "./guard.ts";
 import { handleGroupIntro } from "./group_intro.ts";
-import { BOT_COMMANDS, handleQuickCallback, handleQuickMessage } from "./quick.ts";
+import {
+  BOT_COMMANDS,
+  handleBioCallback,
+  handleQuickCallback,
+  handleQuickMessage,
+} from "./quick.ts";
 import { handleToolboxCallback, handleToolboxMessage } from "./toolbox.ts";
 import { handleGroupExtra } from "./group_extra.ts";
 import { handleBotReply } from "./replies.ts";
@@ -181,6 +186,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     )
     : (async (): Promise<void> => {
       // دستورهای سریع، بازی‌ها و نگهبان ضد ربات قبل از مسیر اصلی بررسی می‌شوند.
+      if (
+        update.callback_query &&
+        await handleBioCallback({ ...extras, settings }, update.callback_query)
+      ) return;
       if (
         update.callback_query &&
         await handleQuickCallback({ ...extras, settings }, update.callback_query)
