@@ -32,19 +32,6 @@ import {
   send,
 } from "./context.ts";
 
-const GENERAL_KEYS: SettingKey[] = [
-  "maintenance_mode",
-  "maintenance_text",
-  "welcome_text",
-  "channel_target",
-  "channel_url",
-  "group_url",
-  "support_username",
-  "ads_label",
-  "ads_default_target",
-  "timezone",
-];
-
 const MODULE_KEYS: SettingKey[] = [
   "feature_ai",
   "feature_anime",
@@ -250,33 +237,55 @@ export function parseSettingValue(
 
 async function renderGeneral(ctx: Ctx): Promise<void> {
   const all = await ctx.settings.all();
-  const rows: Button[][] = [];
-  for (const key of GENERAL_KEYS) {
-    const value = all[key] ?? DEFAULT_SETTINGS[key];
-    if (typeof value === "boolean") {
-      rows.push([{
-        text: `${labelFor(key)}: ${value ? "🟢" : "🔴"}`,
-        callback_data: `a:se:t:${key}`,
-      }]);
-    } else {
-      rows.push([{
-        text: `${labelFor(key)}: ${truncate(String(value), 30)}`,
-        callback_data: `a:se:e:${key}`,
-      }]);
-    }
-  }
-  rows.push([{ text: "🧩 ماژول‌ها", callback_data: "a:se:m" }]);
-  rows.push([{ text: "⚡ کلمات آماده", callback_data: "a:se:pk", style: "primary" }]);
-  rows.push([{ text: "🏠 داشبورد", callback_data: "a:h", style: "success" }]);
+  const pick = (key: SettingKey) => all[key] ?? DEFAULT_SETTINGS[key];
+  const short = (key: SettingKey) => escapeHtml(truncate(String(pick(key) ?? ""), 40) || "—");
+  const maintenance = pick("maintenance_mode") === true;
+
+  const rows: Button[][] = [
+    [
+      {
+        text: `🛠 حالت تعمیر: ${maintenance ? "🟢 روشن" : "🔴 خاموش"}`,
+        callback_data: "a:se:t:maintenance_mode",
+      },
+      { text: "🌐 منطقه زمانی", callback_data: "a:se:e:timezone" },
+    ],
+    [
+      { text: "✉️ پیام تعمیر", callback_data: "a:se:e:maintenance_text" },
+      { text: "💬 پیام خوش‌آمد", callback_data: "a:se:e:welcome_text" },
+    ],
+    [
+      { text: "📢 کانال انتشار", callback_data: "a:se:e:channel_target" },
+      { text: "🔗 لینک کانال", callback_data: "a:se:e:channel_url" },
+    ],
+    [
+      { text: "👥 لینک گروه", callback_data: "a:se:e:group_url" },
+      { text: "🆘 پشتیبانی", callback_data: "a:se:e:support_username" },
+    ],
+    [
+      { text: "🏷 برچسب تبلیغ", callback_data: "a:se:e:ads_label" },
+      { text: "🎯 مقصد تبلیغ", callback_data: "a:se:e:ads_default_target" },
+    ],
+    [
+      { text: "🧩 ماژول‌ها", callback_data: "a:se:m" },
+      { text: "⚡ کلمات آماده", callback_data: "a:se:pk" },
+    ],
+    [{ text: "🏠 داشبورد", callback_data: "a:h" }],
+  ];
 
   await editOrSend(
     ctx,
     [
-      sectionTitle("⚙️ تنظیمات عمومی"),
+      sectionTitle("⚙️ تنظیمات ربات"),
       divider(),
-      GENERAL_KEYS.map((key) =>
-        `• <b>${labelFor(key)}</b>: ${displayValue(all[key] ?? DEFAULT_SETTINGS[key])}`
-      ).join("\n"),
+      maintenance ? "🟠 ربات در حالت تعمیر است" : "🟢 ربات آنلاین و آمادهٔ کار است",
+      "",
+      `📢 کانال: <code>${short("channel_target")}</code>`,
+      `👥 گروه: <code>${short("group_url")}</code>`,
+      `🆘 پشتیبانی: <code>${short("support_username")}</code>`,
+      `🌐 منطقه زمانی: <code>${short("timezone")}</code>`,
+      `🏷 برچسب تبلیغ: <code>${short("ads_label")}</code>`,
+      "",
+      "<i>روی هر دکمه بزن تا مقدار تازه‌اش را بنویسی. آبی = تنظیم · سبز = خانه/روشن · قرمز = بازگشت/خاموش.</i>",
     ].join("\n"),
     keyboard(rows),
   );
@@ -358,6 +367,7 @@ async function renderPresets(ctx: Ctx): Promise<void> {
       "",
       "<b>کلمات داخلی:</b>",
       "بیو · ساعت · تاریخ · آیدی · راهنما · تاس · شیر یا خط · جمله · پیشنهاد انیمه",
+      "سلام · معرفی · رمز · عدد شانسی",
       "",
       customLines,
       "",
