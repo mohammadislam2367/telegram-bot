@@ -9,9 +9,10 @@ import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { TgMessage } from "../_shared/types.ts";
-import { answerQuestion } from "../_shared/ai_core.ts";
+import { answerQuestion, dailyAiRequests } from "../_shared/ai_core.ts";
 import { offlineAnswer } from "../_shared/offline_brain.ts";
 import { keyboard, urlButton } from "../_shared/keyboards.ts";
+import type { SlidingWindowLimiter } from "../_shared/rate_limit.ts";
 
 export interface ReplyDeps {
   cfg: AppConfig;
@@ -19,6 +20,7 @@ export interface ReplyDeps {
   tg: TelegramApi;
   settings: SettingsStore;
   log: Logger;
+  limiter: SlidingWindowLimiter;
 }
 
 /** آیا این پیام ریپلای روی پیام خود ربات است؟ */
@@ -51,6 +53,30 @@ async function aiEnabled(deps: ReplyDeps): Promise<boolean> {
   return feature && enabled;
 }
 
+/**
+ * سهمیهٔ جواب هوشمند در گروه به نام هر کاربر حساب می‌شود تا سهمیهٔ ربات نسوزد:
+ * یک فاصلهٔ زمانی بین جواب‌ها و یک سقف روزانه (پیش‌فرض ۵) برای هر نفر.
+ */
+async function aiQuotaFor(
+  deps: ReplyDeps,
+  chatId: number,
+  userId: number,
+  timeZone: string,
+): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const [cooldownSeconds, dailyLimit] = await Promise.all([
+    deps.settings.get("ai_group_cooldown_seconds"),
+    deps.settings.get("ai_group_daily_limit"),
+  ]);
+  const used = await dailyAiRequests(deps.sb, userId, timeZone);
+  const gate = deps.limiter.hit(
+    `group-ai:${chatId}:${userId}`,
+    1,
+    Math.max(cooldownSeconds, 10) * 1000,
+  );
+  const allowed = gate.allowed && used < dailyLimit;
+  return { allowed, used, limit: dailyLimit };
+}
+
 export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promise<boolean> {
   const chat = message.chat;
   // در چت خصوصی، مسیر عادی ربات خودش جواب می‌دهد.
@@ -73,17 +99,20 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
 
   let body = "";
   if (await aiEnabled(deps)) {
-    try {
-      const reply = await answerQuestion(
-        { sb: deps.sb, settings: deps.settings, cfg: deps.cfg },
-        { userId: from.id, text, memoryEnabled: false },
-      );
-      body = reply.text;
-    } catch (error) {
-      await deps.log.warn("group ai reply failed", {
-        chatId: chat.id,
-        error: (error as Error).message,
-      });
+    const quota = await aiQuotaFor(deps, chat.id, from.id, timeZone);
+    if (quota.allowed) {
+      try {
+        const reply = await answerQuestion(
+          { sb: deps.sb, settings: deps.settings, cfg: deps.cfg },
+          { userId: from.id, text, memoryEnabled: false },
+        );
+        body = reply.text;
+      } catch (error) {
+        await deps.log.warn("group ai reply failed", {
+          chatId: chat.id,
+          error: (error as Error).message,
+        });
+      }
     }
   }
   if (!body.trim()) body = quickAnswer(deps, text, timeZone);
