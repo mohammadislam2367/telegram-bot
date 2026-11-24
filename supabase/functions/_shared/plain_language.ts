@@ -27,8 +27,8 @@ const PHRASES: readonly [RegExp, string][] = [
   [/\bJikan\b/g, "منبع اطلاعات انیمه"],
 
   // سرویس هوش مصنوعی
-  [/حالت\s+Smart Fallback/gi, "حالت آفلاین هوشمند"],
-  [/Smart Fallback/gi, "حالت آفلاین هوشمند"],
+  [/حالت\s+Smart Fallback/gi, "پاسخ سریع"],
+  [/Smart Fallback/gi, "پاسخ سریع"],
   [/GEMINI_API_KEY/g, "کلید هوش مصنوعی"],
   [/کلید\s*API/gi, "کلید هوش مصنوعی"],
   [/\bAPI\s*key\b/gi, "کلید هوش مصنوعی"],
