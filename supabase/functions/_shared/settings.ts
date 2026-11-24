@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS = {
   ai_memory_enabled: true,
   ai_fallback_cooldown_seconds: 900,
   ai_max_retries: 1,
+  ai_group_daily_limit: 5,
+  ai_group_cooldown_seconds: 90,
   ai_anime_context: true,
   group_warning_text:
     "⚠️ {name} عزیز، این یک اخطار رسمی است ({count} از {limit}).\n\nادامه‌ی این رفتار باعث محدودیت در گروه «{group}» می‌شود.",
@@ -129,6 +131,8 @@ export class SettingsStore {
     "ai_memory_messages",
     "ai_memory_enabled",
     "ai_fallback_cooldown_seconds",
+    "ai_group_daily_limit",
+    "ai_group_cooldown_seconds",
     "ai_anime_context",
     "group_warning_text",
     "feature_ai",
