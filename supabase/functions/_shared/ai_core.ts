@@ -208,10 +208,9 @@ export interface AnswerOptions {
   language?: "fa" | "en";
 }
 
-const FALLBACK_NOTE_FA =
-  "\n\n<i>ℹ️ پاسخ از دانش ذخیره‌شده ارائه شد (سرویس هوش مصنوعی موقتاً در دسترس نیست).</i>";
+// بدون هیچ اصطلاح فنی: پاسخ مثل یک جواب معمولی تمام می‌شود.
 const QUOTA_NOTE_FA =
-  "\n\n<i>ℹ️ سهمیه روزانه‌ی هوش مصنوعی پر شده است؛ این پاسخ از دانش ذخیره‌شده است.</i>";
+  "\n\n<i>سهمیهٔ گفتگوی امروزت پر شد؛ فردا دوباره سر بزن 🌙</i>";
 
 export async function answerQuestion(deps: AiDeps, options: AnswerOptions): Promise<AiReply> {
   const { sb, settings, cfg } = deps;
@@ -410,7 +409,6 @@ async function buildFallbackReply(
   }
 
   if (meta.quotaExhausted) parts.push(QUOTA_NOTE_FA);
-  else if (meta.reason !== "not_configured" && !offline) parts.push(FALLBACK_NOTE_FA);
 
   return {
     text: truncate(parts.join(""), 3900),
