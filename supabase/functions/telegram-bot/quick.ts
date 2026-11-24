@@ -8,9 +8,12 @@ import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { TgCallbackQuery, TgMessage, TgUser } from "../_shared/types.ts";
-import { backButton, keyboard } from "../_shared/keyboards.ts";
+import { backButton, keyboard, urlButton } from "../_shared/keyboards.ts";
 import { divider, sectionTitle } from "../_shared/texts.ts";
 import { escapeHtml } from "../_shared/validation.ts";
+import { offlineAnswer } from "../_shared/offline_brain.ts";
+import { getSession } from "../_shared/sessions.ts";
+import type { SlidingWindowLimiter } from "../_shared/rate_limit.ts";
 
 export interface QuickDeps {
   cfg: AppConfig;
@@ -18,6 +21,7 @@ export interface QuickDeps {
   tg: TelegramApi;
   settings: SettingsStore;
   log: Logger;
+  limiter?: SlidingWindowLimiter;
 }
 
 /** فهرست دستورهایی که در منوی رسمی تلگرام نشان داده می‌شوند. */
@@ -234,4 +238,185 @@ export function bioCommandText(message: TgMessage): string | null {
   const command = head.replace(/^\//, "").split("@")[0].toLowerCase();
   if (command !== "me") return null;
   return message.from ? bioText(message.from) : null;
+}
+
+// ─── کلیدواژه‌های آماده ───────────────────────────────────────────────────────
+// چند کلمهٔ از پیش تعیین‌شده که ربات بدون فکر کردن، بدون هوش مصنوعی و بدون پیام
+// «در حال فکر کردن» همان لحظه جواب می‌دهد. هم در گروه و هم در چت خصوصی کار می‌کند.
+
+export type PresetId =
+  | "bio"
+  | "time"
+  | "date"
+  | "id"
+  | "help"
+  | "coin"
+  | "dice"
+  | "anime"
+  | "quote";
+
+const PRESET_WORDS: Record<PresetId, readonly string[]> = {
+  bio: ["بیو", "بیوگرافی", "بیو من", "کارت معرفی", "bio", "biography"],
+  time: ["ساعت", "ساعت چنده", "ساعت چند", "الان ساعت چنده", "وقت", "time"],
+  date: ["تاریخ", "تاریخ امروز", "امروز چندمه", "چه روزیه", "date", "today"],
+  id: ["ایدی", "ایدی من", "شناسه", "شناسه من", "id", "myid"],
+  help: ["راهنما", "کمک", "دستورات", "چیکار میکنی", "چی بلدی", "help"],
+  coin: ["شیر یا خط", "شیروخط", "سکه", "coin"],
+  dice: ["تاس", "تاس بنداز", "dice"],
+  anime: ["انیمه پیشنهاد", "پیشنهاد انیمه", "یه انیمه", "چی ببینم", "anime pick"],
+  quote: ["جمله", "جمله انگیزشی", "یه جمله بگو", "نقل قول", "quote"],
+};
+
+/** عبارت یکسان‌شده‌ای که موتور سریع داخلی برای هر کلیدواژه جواب می‌دهد. */
+const PRESET_QUERIES: Partial<Record<PresetId, string>> = {
+  time: "ساعت چنده",
+  date: "تاریخ امروز",
+  help: "راهنما",
+  coin: "شیر یا خط",
+  dice: "تاس",
+  anime: "یه انیمه پیشنهاد بده",
+  quote: "یه جمله بگو",
+};
+
+const CHAR_FIX: Record<string, string> = {
+  "ي": "ی",
+  "ك": "ک",
+  "ۀ": "ه",
+  "ة": "ه",
+  "أ": "ا",
+  "إ": "ا",
+  "آ": "ا",
+  "ٱ": "ا",
+  "ؤ": "و",
+  "ئ": "ی",
+};
+
+/** یکسان‌سازی متن برای تطبیق دقیق کلمهٔ آماده (نیم‌فاصله، اعراب، عربی/فارسی، فاصله‌ها). */
+export function normalizePresetWord(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[\u200c\u200e\u200f]/g, " ")
+    .replace(/[\u064b-\u0652\u0670]/g, "")
+    .replace(/[\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/[\u0600-\u06ff]/g, (char) => CHAR_FIX[char] ?? char)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** کلیدواژهٔ آمادهٔ متن را پیدا می‌کند (بدون دستور اسلش). */
+export function matchPreset(text: string): PresetId | null {
+  const word = normalizePresetWord(text);
+  if (!word) return null;
+  for (const id of Object.keys(PRESET_WORDS) as PresetId[]) {
+    if (PRESET_WORDS[id].some((candidate) => normalizePresetWord(candidate) === word)) return id;
+  }
+  return null;
+}
+
+function presetIdText(user: TgUser, chatId: number): string {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || "کاربر";
+  return [
+    sectionTitle("🆔 شناسه‌ها"),
+    `👤 نام: <b>${escapeHtml(name)}</b>`,
+    `🔢 شناسهٔ شما: <code>${user.id}</code>`,
+    user.username ? `🔗 نام کاربری: @${escapeHtml(user.username)}` : "🔗 نام کاربری: ندارد",
+    `💬 شناسهٔ این گفتگو: <code>${chatId}</code>`,
+  ].join("\n");
+}
+
+/**
+ * true یعنی همین‌جا و بدون هوش مصنوعی جواب داده شد.
+ * کندی و پیام «در حال فکر کردن» فقط برای سوال‌های واقعی می‌ماند.
+ */
+export async function handlePresetTrigger(deps: QuickDeps, message: TgMessage): Promise<boolean> {
+  const chat = message.chat;
+  if (chat.type === "channel") return false;
+  const from = message.from;
+  if (!from || from.is_bot) return false;
+
+  let candidate = (message.text ?? "").trim();
+  if (!candidate || candidate.startsWith("/")) return false;
+
+  // «@Spixle_bot بیو» هم مثل «بیو» جواب می‌گیرد.
+  const handle = `@${deps.cfg.botUsername}`.toLowerCase();
+  if (candidate.toLowerCase().startsWith(handle)) {
+    candidate = candidate.slice(handle.length).trim();
+  }
+  if (candidate.length === 0 || candidate.length > 40) return false;
+
+  const preset = matchPreset(candidate);
+  if (!preset) return false;
+
+  // وقتی ربات منتظر یک مقدار از مدیر است، کلمهٔ آماده اجرا نمی‌شود.
+  if (chat.type === "private") {
+    try {
+      const session = await getSession(deps.sb, from.id, chat.id);
+      const state = session?.state ?? "";
+      if (state.startsWith("input:") || state.startsWith("wizard:") || state === "confirm") {
+        return false;
+      }
+    } catch {
+      // اگر خواندن وضعیت ممکن نشد، پاسخ سریع ادامه پیدا می‌کند.
+    }
+  }
+
+  // فاصلهٔ کوتاه ضد تکرار، تا اسپم «بیو» پاسخ پشت‌سرهم نسازد.
+  if (deps.limiter) {
+    const gate = deps.limiter.hit(`preset:${chat.id}:${from.id}`, 1, 4000);
+    if (!gate.allowed) return true;
+  }
+
+  const target = message.reply_to_message?.from ?? from;
+  let body: string;
+  if (preset === "bio") {
+    body = bioText(target);
+  } else if (preset === "id") {
+    body = presetIdText(from, chat.id);
+  } else {
+    let timeZone = "Asia/Tehran";
+    try {
+      timeZone = await deps.settings.get("timezone");
+    } catch {
+      // پیش‌فرض کافی است
+    }
+    const answer = offlineAnswer(PRESET_QUERIES[preset] ?? candidate, {
+      timeZone,
+      botUsername: deps.cfg.botUsername,
+    });
+    if (!answer) return false;
+    body = answer.text;
+  }
+
+  const markup = chat.type === "private"
+    ? keyboard([[
+      {
+        text: "🧹 پاک کردن حافظه",
+        callback_data: "u:mm",
+        style: "danger" as const,
+      },
+      { text: "🏠 منوی اصلی", callback_data: "u:m", style: "success" as const },
+    ]])
+    : keyboard([[
+      urlButton(
+        "🤖 گفتگوی خصوصی",
+        `https://t.me/${deps.cfg.botUsername}?start=group`,
+        "primary",
+      ),
+    ]]);
+
+  try {
+    await deps.tg.sendMessage(chat.id, body, {
+      preview: false,
+      markup,
+      replyTo: chat.type === "private" ? undefined : message.message_id,
+    });
+  } catch (error) {
+    await deps.log.warn("preset reply failed", {
+      chatId: chat.id,
+      preset,
+      error: (error as Error).message,
+    });
+  }
+  return true;
 }
