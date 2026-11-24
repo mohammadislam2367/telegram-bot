@@ -704,11 +704,16 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
     if (!dedupe.allowed || !runtime.settings.welcome_enabled) return;
 
     const name = displayName(user);
-    const text = fillTemplate(runtime.settings.welcome_text, {
-      name: `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`,
+    const mention = `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`;
+    let text = fillTemplate(runtime.settings.welcome_text, {
+      name: mention,
       username: user.username ? `@${user.username}` : name,
       group: escapeHtml(groupTitle),
     });
+    // اگر متن دلخواه اسم عضو را نداشت، با نام همان عضو سلام می‌کنیم.
+    if (!runtime.settings.welcome_text.includes("{name}")) {
+      text = `👋 ${mention} عزیز، خوش آمدی!\n\n${text}`;
+    }
     await send(ctx, text);
     return;
   }
@@ -753,23 +758,28 @@ export async function handleMyChatMemberUpdate(
   ) {
     runtimeCache.delete(chat.id);
     const isAdmin = newStatus === "administrator" || newStatus === "creator";
+    const adder = update.from;
+    const adderName = displayName(adder);
+    const adderMention = `<a href="tg://user?id=${adder.id}">${escapeHtml(adderName)}</a>`;
+    const groupTitle = escapeHtml(chat.title ?? String(chat.id));
     await send(
       ctx,
       [
-        "👋 <b>Anime Click Ultimate به گروه اضافه شد</b>",
+        `👋 سلام ${adderMention}، خوش آمدی!`,
+        `ممنون که <b>Anime Click Ultimate</b> را به گروه «${groupTitle}» اضافه کردی.`,
         "",
         `وضعیت دسترسی مدیریت: ${isAdmin ? "✅ ادمین" : "❌ ادمین نیست"}`,
         isAdmin
-          ? "ضدلینک، ضداسپم، اخطار و خوش‌آمدگویی آماده است. تنظیمات هر گروه مستقل است."
-          : "برای فعال‌شدن امکانات مدیریتی، ربات را ادمین کنید.",
+          ? "ضدلینک، ضدتبچی، اخطار، قفل گروه و خوش‌آمدگویی آماده است."
+          : "برای فعال‌شدن امکانات مدیریتی، ربات را ادمین کن.",
         "",
-        `<i>تنظیمات: داشبورد خصوصی → 👮 مدیریت گروه</i>`,
+        "برای دیدن پنل گروه همین‌جا بنویس /panel یا دکمه‌های زیر را بزن.",
       ].join("\n"),
       keyboard([
-        [{
-          text: "⚙️ تنظیمات گروه",
-          url: `https://t.me/${ctx.cfg.botUsername}?start=admin`,
-        }],
+        [
+          { text: "🛡 پنل گروه", callback_data: "gp:p:1", style: "primary" },
+          { text: "⚙️ تنظیمات کامل", url: `https://t.me/${ctx.cfg.botUsername}?start=admin` },
+        ],
       ]),
     );
   }
