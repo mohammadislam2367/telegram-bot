@@ -56,6 +56,8 @@ const MODULE_KEYS: SettingKey[] = [
 
 const LIMIT_KEYS: SettingKey[] = [
   "ai_daily_limit",
+  "ai_group_daily_limit",
+  "ai_group_cooldown_seconds",
   "ai_memory_messages",
   "ai_fallback_cooldown_seconds",
   "ai_max_retries",
@@ -73,6 +75,8 @@ const LIMIT_KEYS: SettingKey[] = [
 
 const NUMBER_RANGES: Partial<Record<SettingKey, [number, number]>> = {
   ai_daily_limit: [0, 1000],
+  ai_group_daily_limit: [0, 100],
+  ai_group_cooldown_seconds: [0, 3600],
   ai_memory_messages: [0, 50],
   ai_fallback_cooldown_seconds: [60, 86_400],
   ai_max_retries: [0, 3],
@@ -101,9 +105,11 @@ const KEY_LABELS: Partial<Record<SettingKey, string>> = {
   timezone: "منطقه زمانی",
   ai_enabled: "هوش مصنوعی",
   ai_daily_limit: "سقف روزانه AI",
+  ai_group_daily_limit: "سقف روزانه AI در گروه",
+  ai_group_cooldown_seconds: "فاصلهٔ پاسخ AI در گروه (ثانیه)",
   ai_memory_messages: "حافظه مکالمه",
   ai_memory_enabled: "حافظه فعال",
-  ai_fallback_cooldown_seconds: "cooldown جایگزین",
+  ai_fallback_cooldown_seconds: "فاصلهٔ تلاش مجدد (ثانیه)",
   ai_max_retries: "تلاش مجدد AI",
   ai_model: "مدل AI",
   ai_persona: "شخصیت AI",
@@ -134,6 +140,16 @@ const KEY_LABELS: Partial<Record<SettingKey, string>> = {
 function labelFor(key: SettingKey): string {
   return KEY_LABELS[key] ?? key;
 }
+
+/** کلیدهایی که از پنل «مدیریت هوش مصنوعی» ویرایش می‌شوند. */
+const AI_PANEL_KEYS: string[] = [
+  "ai_persona",
+  "ai_model",
+  "ai_daily_limit",
+  "ai_group_daily_limit",
+  "ai_group_cooldown_seconds",
+  "ai_memory_messages",
+];
 
 function displayValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "🟢 روشن" : "🔴 خاموش";
@@ -572,7 +588,15 @@ export async function handleSettingsInput(
     await ctx.settings.set(key, parsed.value, ctx.userId);
     await logAdminAction(ctx, "setting_update", "setting", key, { value: parsed.value });
     await send(ctx, `✅ «${labelFor(key as SettingKey)}» به‌روزرسانی شد.`);
-    await renderGeneral(ctx);
+    if (AI_PANEL_KEYS.includes(key)) {
+      // برگشت به همان پنلی که ویرایش از آن شروع شده بود.
+      const { renderAiPanel } = await import("./ai.ts");
+      await renderAiPanel(ctx);
+    } else if (LIMIT_KEYS.includes(key as SettingKey)) {
+      await renderLimits(ctx);
+    } else {
+      await renderGeneral(ctx);
+    }
     return true;
   }
 
