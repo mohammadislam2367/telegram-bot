@@ -1,17 +1,21 @@
 /**
  * 💬 پاسخ به ریپلای — اگر کسی روی پیام خودِ ربات ریپلای کند، ربات جواب می‌دهد.
- * پاسخ از دانش ذخیره‌شده ساخته می‌شود، پس بدون اینترنت و بدون تأخیر است.
+ * اگر هوش مصنوعی روشن باشد پاسخ با هوش مصنوعی ساخته می‌شود؛ در غیر این صورت
+ * (خاموش یا پر بودن سهمیه) موتور سریع داخلی همان‌جا جواب می‌دهد.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppConfig } from "../_shared/config.ts";
 import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { TgMessage } from "../_shared/types.ts";
+import { answerQuestion } from "../_shared/ai_core.ts";
 import { offlineAnswer } from "../_shared/offline_brain.ts";
-import { keyboard } from "../_shared/keyboards.ts";
+import { keyboard, urlButton } from "../_shared/keyboards.ts";
 
 export interface ReplyDeps {
   cfg: AppConfig;
+  sb: SupabaseClient;
   tg: TelegramApi;
   settings: SettingsStore;
   log: Logger;
@@ -25,6 +29,28 @@ export function isReplyToBot(cfg: AppConfig, message: TgMessage): boolean {
   return username.length > 0 && username === cfg.botUsername.toLowerCase();
 }
 
+/** پاسخ سریع محلی، بدون هیچ اشاره‌ای به حالت یا نسخهٔ خاص. */
+function quickAnswer(deps: ReplyDeps, text: string, timeZone: string): string {
+  const answer = offlineAnswer(text, {
+    timeZone,
+    now: new Date(),
+    botUsername: deps.cfg.botUsername,
+  });
+  if (answer) return answer.text;
+  return [
+    "سوالت را گرفتم، ولی جواب دقیقش را همین‌جا ندارم.",
+    "برای حساب و کتاب /calc، برای بازی /games و برای راهنما /help را بزن.",
+  ].join("\n");
+}
+
+async function aiEnabled(deps: ReplyDeps): Promise<boolean> {
+  const [feature, enabled] = await Promise.all([
+    deps.settings.get("feature_ai"),
+    deps.settings.get("ai_enabled"),
+  ]);
+  return feature && enabled;
+}
+
 export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promise<boolean> {
   const chat = message.chat;
   // در چت خصوصی، مسیر عادی ربات خودش جواب می‌دهد.
@@ -34,6 +60,10 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
   const text = (message.text ?? message.caption ?? "").trim();
   if (!text || text.startsWith("/")) return false;
 
+  const from = message.from;
+  // پیام‌های سرویس (بدون فرستنده) یا فرستندهٔ ربات را جواب نمی‌دهیم.
+  if (!from || from.is_bot) return false;
+
   let timeZone = "Asia/Tehran";
   try {
     timeZone = await deps.settings.get("timezone");
@@ -41,22 +71,34 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
     // پیش‌فرض کافی است
   }
 
-  const answer = offlineAnswer(text, {
-    timeZone,
-    now: new Date(),
-    botUsername: deps.cfg.botUsername,
-  });
-
-  const body = answer ? answer.text : [
-    "سوالت را گرفتم، ولی جواب دقیقش را همین‌جا ندارم.",
-    "برای حساب و کتاب /calc، برای بازی /games و برای راهنما /help را بزن.",
-  ].join("\n");
+  let body = "";
+  if (await aiEnabled(deps)) {
+    try {
+      const reply = await answerQuestion(
+        { sb: deps.sb, settings: deps.settings, cfg: deps.cfg },
+        { userId: from.id, text, memoryEnabled: false },
+      );
+      body = reply.text;
+    } catch (error) {
+      await deps.log.warn("group ai reply failed", {
+        chatId: chat.id,
+        error: (error as Error).message,
+      });
+    }
+  }
+  if (!body.trim()) body = quickAnswer(deps, text, timeZone);
 
   try {
     await deps.tg.sendMessage(chat.id, body, {
       preview: false,
       replyTo: message.message_id,
-      markup: keyboard([[{ text: "🏠 منوی اصلی", callback_data: "u:m" }]]),
+      markup: keyboard([[
+        urlButton(
+          "🤖 گفتگوی خصوصی",
+          `https://t.me/${deps.cfg.botUsername}?start=group`,
+          "primary",
+        ),
+      ]]),
     });
   } catch (error) {
     await deps.log.warn("reply answer failed", {
