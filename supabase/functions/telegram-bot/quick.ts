@@ -8,7 +8,7 @@ import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { TgCallbackQuery, TgMessage, TgUser } from "../_shared/types.ts";
-import { keyboard } from "../_shared/keyboards.ts";
+import { backButton, keyboard } from "../_shared/keyboards.ts";
 import { divider, sectionTitle } from "../_shared/texts.ts";
 import { escapeHtml } from "../_shared/validation.ts";
 
@@ -26,6 +26,7 @@ export const BOT_COMMANDS: { command: string; description: string }[] = [
   { command: "games", description: "بازی و سرگرمی" },
   { command: "quiz", description: "کوییز انیمه با گزینه" },
   { command: "bio", description: "کارت معرفی (با ریپلای روی پیام)" },
+  { command: "me", description: "بیوی من در یک نگاه" },
   { command: "toolbox", description: "جعبه‌ابزار سریع: حساب، ساعت، شانس" },
   { command: "calc", description: "ماشین‌حساب سریع" },
   { command: "time", description: "ساعت و تاریخ" },
@@ -97,7 +98,7 @@ export async function handleQuickMessage(deps: QuickDeps, message: TgMessage): P
   const args = restParts.join(" ").trim();
   const chatId = message.chat.id;
 
-  if (command === "bio") {
+  if (command === "bio" || command === "me") {
     const target = message.reply_to_message?.from ?? message.from;
     if (!target) return true;
     await reply(deps, chatId, bioText(target));
@@ -165,11 +166,15 @@ export async function handleQuickCallback(
     // پاسخ به دکمه اختیاری است
   }
 
+  const markup = keyboard([[
+    backButton("u:m", "↩️ بازگشت"),
+    { text: "🏠 منوی اصلی", callback_data: "u:m", style: "success" as const },
+  ]]);
   const chatId = cq.message?.chat.id;
   if (chatId && cq.message) {
     try {
       await deps.tg.editMessageText(chatId, cq.message.message_id, text, {
-        markup: keyboard([[{ text: "🏠 منوی اصلی", callback_data: "u:m" }]]),
+        markup,
       });
       return true;
     } catch {
@@ -178,4 +183,55 @@ export async function handleQuickCallback(
   }
   if (chatId) await reply(deps, chatId, text);
   return true;
+}
+
+/** دکمهٔ «🧬 کارت معرفی» — بیوی کاربر در یک نگاه. */
+export async function handleBioCallback(
+  deps: QuickDeps,
+  cq: TgCallbackQuery,
+): Promise<boolean> {
+  if ((cq.data ?? "") !== "u:bi") return false;
+
+  try {
+    await deps.tg.answerCallback(cq.id, "");
+  } catch {
+    // پاسخ به دکمه اختیاری است
+  }
+
+  const body = bioText(cq.from);
+  const markup = keyboard([
+    [backButton("u:m", "↩️ بازگشت"), {
+      text: "🏠 منوی اصلی",
+      callback_data: "u:m",
+      style: "success" as const,
+    }],
+  ]);
+
+  const chatId = cq.message?.chat.id;
+  if (chatId && cq.message && cq.message.chat.type === "private") {
+    try {
+      await deps.tg.editMessageText(chatId, cq.message.message_id, body, {
+        preview: false,
+        markup,
+      });
+      return true;
+    } catch {
+      // پیام قابل ویرایش نبود؛ نسخهٔ جدید فرستاده می‌شود
+    }
+  }
+  const target = chatId ?? cq.from.id;
+  try {
+    await deps.tg.sendMessage(target, body, { preview: false, markup });
+  } catch (error) {
+    await deps.log.warn("bio card failed", { chatId: target, error: (error as Error).message });
+  }
+  return true;
+}
+
+/** متن کارت معرفی برای دستور /me. */
+export function bioCommandText(message: TgMessage): string | null {
+  const head = (message.text ?? "").trim().split(/\s+/)[0] ?? "";
+  const command = head.replace(/^\//, "").split("@")[0].toLowerCase();
+  if (command !== "me") return null;
+  return message.from ? bioText(message.from) : null;
 }
