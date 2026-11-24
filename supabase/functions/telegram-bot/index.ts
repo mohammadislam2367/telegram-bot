@@ -19,6 +19,7 @@ import { handleGroupIntro } from "./group_intro.ts";
 import {
   BOT_COMMANDS,
   handleBioCallback,
+  handlePresetTrigger,
   handleQuickCallback,
   handleQuickMessage,
 } from "./quick.ts";
@@ -204,6 +205,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
       ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
+      if (
+        update.message &&
+        await handlePresetTrigger({ ...extras, settings, limiter }, update.message)
+      ) return;
       if (update.message && await handleQuickMessage({ ...extras, settings }, update.message)) {
         return;
       }
