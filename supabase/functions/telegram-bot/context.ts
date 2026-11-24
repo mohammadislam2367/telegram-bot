@@ -111,7 +111,16 @@ function parentTarget(data: string): string | null {
   if (parts.length === 2) return main;
   // فهرست گروه‌ها یک سطح بالاتر از پنل هر گروه است
   if (root === "a" && parts[1] === "g" && parts.length === 3) return "a:gr";
-  return parts.slice(0, -1).join(":");
+
+  // شناسه‌ها و کلیدهای کوتاه (مثل «a:us:v:123» یا «a:ai:l») بخش نیستند؛
+  // تا رسیدن به بخش واقعی حذف می‌شوند تا بازگشت هرگز به مسیر نامعتبر نرود.
+  const candidate = parts.slice(0, -1);
+  while (candidate.length > 2) {
+    const last = candidate[candidate.length - 1];
+    if (/^\d+$/.test(last) || last.length <= 2) candidate.pop();
+    else break;
+  }
+  return candidate.join(":");
 }
 
 const panelHistory = new Map<string, string[]>();
