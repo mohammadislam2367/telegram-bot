@@ -99,13 +99,61 @@ export async function sendTo(
 }
 
 /**
- * مقصد دکمهٔ «↩️ بازگشت» بر اساس همین پنل تعیین می‌شود؛
- * پنل مدیریتی به داشبورد و پنل کاربری به منوی اصلی برمی‌گردد.
+ * والدِ بخش فعلی از روی callback همین صفحه ساخته می‌شود؛
+ * مثلا «a:se:a» → «a:se» و «a:g:123» → «a:gr». پس بازگشت به بخش قبلی می‌رود.
  */
+function parentTarget(data: string): string | null {
+  const parts = data.split(":").filter((part) => part.length > 0);
+  if (parts.length < 2) return null;
+  const root = parts[0];
+  const main = root === "a" ? "a:h" : root === "u" ? "u:m" : null;
+  if (!main) return null;
+  if (parts.length === 2) return main;
+  // فهرست گروه‌ها یک سطح بالاتر از پنل هر گروه است
+  if (root === "a" && parts[1] === "g" && parts.length === 3) return "a:gr";
+  return parts.slice(0, -1).join(":");
+}
+
+const panelHistory = new Map<string, string[]>();
+
+function historyKey(ctx: Ctx): string {
+  return `${ctx.chatId}:${ctx.userId}`;
+}
+
+/** مسیر پنل‌هایی که همین کاربر باز کرده را نگه می‌دارد تا بازگشت واقعی باشد. */
+function rememberPanel(ctx: Ctx, data: string): string | null {
+  if (!data || data === "noop") return null;
+  const key = historyKey(ctx);
+  const trail = panelHistory.get(key) ?? [];
+  const seen = trail.lastIndexOf(data);
+  if (seen >= 0) trail.splice(seen + 1);
+  else trail.push(data);
+  while (trail.length > 12) trail.shift();
+  panelHistory.set(key, trail);
+  for (let index = trail.length - 2; index >= 0; index--) {
+    if (trail[index] !== data) return trail[index];
+  }
+  return null;
+}
+
 function backTargetFor(ctx: Ctx, markup?: TgInlineKeyboardMarkup): string {
+  const current = ctx.update.callback_query?.data ?? "";
+  const previous = rememberPanel(ctx, current);
+  if (previous) return previous;
+
+  const parent = parentTarget(current);
+  if (parent) return parent;
+
   const data = markup?.inline_keyboard.flat().map((btn) => btn.callback_data ?? "") ?? [];
   if (data.some((value) => value.startsWith("a:"))) return "a:h";
   if (data.some((value) => value.startsWith("u:"))) return "u:m";
+  return ctx.admin && isPrivate(ctx) ? "a:h" : "u:m";
+}
+
+/** خانه همیشه یکی است: داشبورد برای پنل مدیریتی و منوی اصلی برای بقیه. */
+function homeTargetFor(ctx: Ctx, backTo: string): string {
+  if (backTo.startsWith("a:")) return "a:h";
+  if (backTo.startsWith("u:")) return "u:m";
   return ctx.admin && isPrivate(ctx) ? "a:h" : "u:m";
 }
 
@@ -116,7 +164,8 @@ export async function editOrSend(
   markup?: TgInlineKeyboardMarkup,
 ): Promise<void> {
   const body = humanizeText(text);
-  const withBack = ensureBackButton(markup, backTargetFor(ctx, markup));
+  const backTo = backTargetFor(ctx, markup);
+  const withBack = ensureBackButton(markup, backTo, homeTargetFor(ctx, backTo));
   const humanized = humanizeMarkup(withBack);
   const kb = humanized ? styleKeyboard(humanized) : undefined;
   const message = ctx.update.callback_query?.message;
