@@ -14,6 +14,9 @@ import { escapeHtml } from "../_shared/validation.ts";
 import { offlineAnswer } from "../_shared/offline_brain.ts";
 import { getSession } from "../_shared/sessions.ts";
 import type { SlidingWindowLimiter } from "../_shared/rate_limit.ts";
+import { type CustomPreset, loadCustomPresets, normalizePresetWord } from "../_shared/presets.ts";
+
+export { normalizePresetWord };
 
 export interface QuickDeps {
   cfg: AppConfig;
@@ -278,30 +281,29 @@ const PRESET_QUERIES: Partial<Record<PresetId, string>> = {
   quote: "یه جمله بگو",
 };
 
-const CHAR_FIX: Record<string, string> = {
-  "ي": "ی",
-  "ك": "ک",
-  "ۀ": "ه",
-  "ة": "ه",
-  "أ": "ا",
-  "إ": "ا",
-  "آ": "ا",
-  "ٱ": "ا",
-  "ؤ": "و",
-  "ئ": "ی",
-};
+// کلمات سفارشی مدیر با یک کش کوتاه خوانده می‌شوند تا هر پیام به دیتابیس نزند.
+let customCache: { at: number; items: CustomPreset[] } | null = null;
+const CUSTOM_CACHE_MS = 120_000;
 
-/** یکسان‌سازی متن برای تطبیق دقیق کلمهٔ آماده (نیم‌فاصله، اعراب، عربی/فارسی، فاصله‌ها). */
-export function normalizePresetWord(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[\u200c\u200e\u200f]/g, " ")
-    .replace(/[\u064b-\u0652\u0670]/g, "")
-    .replace(/[\u06f0-\u06f9]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
-    .replace(/[\u0600-\u06ff]/g, (char) => CHAR_FIX[char] ?? char)
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/** بعد از افزودن/حذف از پنل صدا زده می‌شود تا کش همان نمونه خالی شود. */
+export function invalidatePresetCache(): void {
+  customCache = null;
+}
+
+async function customPresets(deps: QuickDeps): Promise<CustomPreset[]> {
+  if (customCache && Date.now() - customCache.at < CUSTOM_CACHE_MS) return customCache.items;
+  try {
+    const items = await loadCustomPresets(deps.settings);
+    customCache = { at: Date.now(), items };
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+async function findCustomPreset(deps: QuickDeps, word: string): Promise<CustomPreset | null> {
+  const items = await customPresets(deps);
+  return items.find((item) => item.word === word) ?? null;
 }
 
 /** کلیدواژهٔ آمادهٔ متن را پیدا می‌کند (بدون دستور اسلش). */
@@ -346,7 +348,8 @@ export async function handlePresetTrigger(deps: QuickDeps, message: TgMessage): 
   if (candidate.length === 0 || candidate.length > 40) return false;
 
   const preset = matchPreset(candidate);
-  if (!preset) return false;
+  const custom = preset ? null : await findCustomPreset(deps, normalizePresetWord(candidate));
+  if (!preset && !custom) return false;
 
   // وقتی ربات منتظر یک مقدار از مدیر است، کلمهٔ آماده اجرا نمی‌شود.
   if (chat.type === "private") {
@@ -369,23 +372,28 @@ export async function handlePresetTrigger(deps: QuickDeps, message: TgMessage): 
 
   const target = message.reply_to_message?.from ?? from;
   let body: string;
-  if (preset === "bio") {
-    body = bioText(target);
-  } else if (preset === "id") {
-    body = presetIdText(from, chat.id);
+  if (custom) {
+    body = escapeHtml(custom.text);
   } else {
-    let timeZone = "Asia/Tehran";
-    try {
-      timeZone = await deps.settings.get("timezone");
-    } catch {
-      // پیش‌فرض کافی است
+    const builtin = preset as PresetId;
+    if (builtin === "bio") {
+      body = bioText(target);
+    } else if (builtin === "id") {
+      body = presetIdText(from, chat.id);
+    } else {
+      let timeZone = "Asia/Tehran";
+      try {
+        timeZone = await deps.settings.get("timezone");
+      } catch {
+        // پیش‌فرض کافی است
+      }
+      const answer = offlineAnswer(PRESET_QUERIES[builtin] ?? candidate, {
+        timeZone,
+        botUsername: deps.cfg.botUsername,
+      });
+      if (!answer) return false;
+      body = answer.text;
     }
-    const answer = offlineAnswer(PRESET_QUERIES[preset] ?? candidate, {
-      timeZone,
-      botUsername: deps.cfg.botUsername,
-    });
-    if (!answer) return false;
-    body = answer.text;
   }
 
   const markup = chat.type === "private"
