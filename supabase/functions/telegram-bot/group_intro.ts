@@ -29,22 +29,50 @@ export function isIntroCommand(text: string, botUsername: string): boolean {
   return INTRO_COMMANDS.includes(name.toLowerCase());
 }
 
-function introText(): string {
-  return [
-    sectionTitle("👋 سلام! من ربات مدیریت این گروه هستم"),
+// وضعیت privacy را کوتاه کش می‌کنیم تا هر /start یک تماس اضافه نزند.
+let privacyCache: { at: number; value: boolean | null } | null = null;
+const PRIVACY_CACHE_MS = 300_000;
+
+/** true یعنی ربات همهٔ پیام‌های گروه را می‌بیند (privacy mode خاموش است). */
+async function readsAllGroupMessages(deps: IntroDeps): Promise<boolean | null> {
+  if (privacyCache && Date.now() - privacyCache.at < PRIVACY_CACHE_MS) {
+    return privacyCache.value;
+  }
+  try {
+    const me = await deps.tg.getMe() as { can_read_all_group_messages?: boolean };
+    const value = me.can_read_all_group_messages === true;
+    privacyCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function introText(readsAll: boolean | null): string {
+  const lines = [
+    sectionTitle("👋 ربات مدیریت این گروه، آماده است"),
     divider(),
-    "• ضدلینک، ضداسپم و ضد فوروارد",
-    "• اخطار، سکوت و بن خودکار",
-    "• خوش‌آمدگویی و قوانین",
+    "🛡 ضد لینک و ضد اسپم  •  📤 ضد فوروارد",
+    "⚠️ اخطار خودکار ← سکوت / اخراج / بن",
+    "🔒 قفل گروه  •  📌 سنجاق  •  🧹 پاک‌سازی",
+    "👋 خوش‌آمدگویی ویژهٔ اعضای تازه",
+    "⚡ جواب فوری کلمات: بیو، ساعت، تاریخ، آیدی، تاس، جمله، پیشنهاد انیمه",
     "",
-    "<b>دستورها:</b>",
-    "• /rules — قوانین گروه",
-    "• /id — شناسهٔ من و گروه",
-    "• /report — گزارش تخلف (با ریپلای روی پیام)",
-    "• /quiz، /dice، /coin، /rps — بازی و سرگرمی",
-    "",
-    "<i>تنظیمات کامل گروه در چت خصوصی ربات انجام می‌شود.</i>",
-  ].join("\n");
+    "<b>دستورها:</b> /panel · /rules · /id · /report",
+  ];
+  if (readsAll === false) {
+    lines.push(
+      "",
+      "⚠️ <b>یک تنظیم مهم برای مدیر:</b>",
+      "ربات الان فقط دستورها و منشن‌ها را می‌بیند.",
+      "برای فعال‌شدن ضدلینک، ضداسپم و پاسخ به کلمات آماده در همهٔ پیام‌ها:",
+      "1️⃣ در BotFather دستور <code>/setprivacy</code> را بزن",
+      "2️⃣ ربات را انتخاب کن و <b>Disable</b> را بزن",
+      "3️⃣ ربات را از گروه حذف و دوباره اضافه کن",
+    );
+  }
+  lines.push("", "<i>تنظیمات کامل گروه همین‌جا با /panel و دکمهٔ زیر انجام می‌شود.</i>");
+  return lines.join("\n");
 }
 
 export async function handleGroupIntro(deps: IntroDeps, message: TgMessage): Promise<boolean> {
@@ -55,15 +83,20 @@ export async function handleGroupIntro(deps: IntroDeps, message: TgMessage): Pro
   if (!isIntroCommand(text, deps.cfg.botUsername)) return false;
 
   const username = deps.cfg.botUsername;
+  const readsAll = await readsAllGroupMessages(deps);
   const markup = keyboard([
     [
+      { text: "🛡 پنل مدیریت گروه", callback_data: "gp:p:1", style: "success" },
       { text: "🤖 ورود به ربات", url: `https://t.me/${username}?start=group` },
+    ],
+    [
+      { text: "📜 قوانین گروه", url: `https://t.me/${username}?start=rules` },
       { text: "⚙️ تنظیمات گروه", url: `https://t.me/${username}?start=admin` },
     ],
   ]);
 
   try {
-    await deps.tg.sendMessage(chat.id, introText(), { markup, preview: false });
+    await deps.tg.sendMessage(chat.id, introText(readsAll), { markup, preview: false });
   } catch (error) {
     await deps.log.warn("group intro failed", {
       chatId: chat.id,
