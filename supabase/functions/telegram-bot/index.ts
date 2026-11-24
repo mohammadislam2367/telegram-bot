@@ -23,7 +23,7 @@ import {
   handleQuickMessage,
 } from "./quick.ts";
 import { handleToolboxCallback, handleToolboxMessage } from "./toolbox.ts";
-import { handleGroupExtra } from "./group_extra.ts";
+import { handleGroupExtra, handleGroupPanelCallback } from "./group_extra.ts";
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
@@ -198,6 +198,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
         update.callback_query &&
         await handleToolboxCallback({ ...extras, settings }, update.callback_query)
       ) return;
+      if (
+        update.callback_query &&
+        await handleGroupPanelCallback({ ...extras, settings, groupAdmins }, update.callback_query)
+      ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
       if (update.message && await handleQuickMessage({ ...extras, settings }, update.message)) {
@@ -210,7 +214,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
         update.message &&
         await handleGroupExtra({ ...extras, settings, groupAdmins }, update.message)
       ) return;
-      if (update.message && await handleBotReply({ ...extras, settings }, update.message)) {
+      if (
+        update.message &&
+        await handleBotReply({ ...extras, settings, limiter }, update.message)
+      ) {
         return;
       }
       if (update.message && await handleGroupIntro(extras, update.message)) return;
