@@ -212,7 +212,6 @@ const FALLBACK_NOTE_FA =
   "\n\n<i>ℹ️ پاسخ از دانش ذخیره‌شده ارائه شد (سرویس هوش مصنوعی موقتاً در دسترس نیست).</i>";
 const QUOTA_NOTE_FA =
   "\n\n<i>ℹ️ سهمیه روزانه‌ی هوش مصنوعی پر شده است؛ این پاسخ از دانش ذخیره‌شده است.</i>";
-const OFFLINE_NOTE_FA = "\n\n<i>⚡ حالت آفلاین: این پاسخ را موتور محلی ربات بدون اینترنت ساخت.</i>";
 
 export async function answerQuestion(deps: AiDeps, options: AnswerOptions): Promise<AiReply> {
   const { sb, settings, cfg } = deps;
@@ -373,7 +372,7 @@ async function buildFallbackReply(
     if (ownerRow) ownerName = displayName(ownerRow);
   }
 
-  // ۱) موتور آفلاین (کارهای واقعی: محاسبه، ساعت، تصادفی، …)
+  // ۱) موتور سریع داخلی (کارهای واقعی: محاسبه، ساعت، تصادفی، …)
   const offline = offlineAnswer(question, {
     timeZone,
     botUsername: cfg.botUsername,
@@ -386,7 +385,6 @@ async function buildFallbackReply(
 
   if (offline) {
     parts.push(offline.text);
-    parts.push(OFFLINE_NOTE_FA);
     category = offline.category;
   } else {
     // ۲) دانش ذخیره‌شده (FAQ)
@@ -405,7 +403,7 @@ async function buildFallbackReply(
       if (query.length >= 2) {
         const results = await searchAnime(query, { limit: 1, sb });
         if (results[0]) {
-          parts.push(`\n\n📚 <b>اطلاعات Jikan:</b>\n${formatAnimeCard(results[0])}`);
+          parts.push(`\n\n📚 <b>اطلاعات انیمه:</b>\n${formatAnimeCard(results[0])}`);
         }
       }
     }
@@ -433,7 +431,7 @@ export async function testAiConnection(deps: AiDeps): Promise<AiTestResult> {
   if (!isGeminiConfigured(deps.cfg.geminiApiKey)) {
     return {
       ok: false,
-      message: "GEMINI_API_KEY تنظیم نشده است؛ فقط Smart Fallback فعال است.",
+      message: "سرویس هوش مصنوعی وصل نشده است؛ پاسخ‌های سریع داخلی فعال هستند.",
       latencyMs: 0,
     };
   }
