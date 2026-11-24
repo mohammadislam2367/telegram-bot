@@ -15,6 +15,7 @@ import type { TgInlineKeyboardMarkup, TgMessage, TgUpdate, UserRow } from "../_s
 import { insertRow } from "../_shared/db.ts";
 import { escapeHtml } from "../_shared/validation.ts";
 import { humanizeMarkup, humanizeText } from "../_shared/plain_language.ts";
+import { ensureBackButton, styleKeyboard } from "../_shared/keyboards.ts";
 
 export interface Ctx {
   cfg: AppConfig;
@@ -97,6 +98,17 @@ export async function sendTo(
   }
 }
 
+/**
+ * مقصد دکمهٔ «↩️ بازگشت» بر اساس همین پنل تعیین می‌شود؛
+ * پنل مدیریتی به داشبورد و پنل کاربری به منوی اصلی برمی‌گردد.
+ */
+function backTargetFor(ctx: Ctx, markup?: TgInlineKeyboardMarkup): string {
+  const data = markup?.inline_keyboard.flat().map((btn) => btn.callback_data ?? "") ?? [];
+  if (data.some((value) => value.startsWith("a:"))) return "a:h";
+  if (data.some((value) => value.startsWith("u:"))) return "u:m";
+  return ctx.admin && isPrivate(ctx) ? "a:h" : "u:m";
+}
+
 /** ویرایش پیام callback؛ اگر پیام موجود نبود، پیام جدید می‌فرستد. */
 export async function editOrSend(
   ctx: Ctx,
@@ -104,7 +116,9 @@ export async function editOrSend(
   markup?: TgInlineKeyboardMarkup,
 ): Promise<void> {
   const body = humanizeText(text);
-  const kb = humanizeMarkup(markup);
+  const withBack = ensureBackButton(markup, backTargetFor(ctx, markup));
+  const humanized = humanizeMarkup(withBack);
+  const kb = humanized ? styleKeyboard(humanized) : undefined;
   const message = ctx.update.callback_query?.message;
   if (!message) {
     await send(ctx, body, kb);
