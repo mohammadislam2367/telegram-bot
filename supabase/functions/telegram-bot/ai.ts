@@ -25,9 +25,20 @@ import {
 } from "./context.ts";
 import { startSession } from "../_shared/sessions.ts";
 
-async function renderPanel(ctx: Ctx): Promise<void> {
+export async function renderAiPanel(ctx: Ctx): Promise<void> {
   const timeZone = await ctx.settings.get("timezone");
-  const [state, enabled, feature, model, dailyLimit, memory, cooldown, usage] = await Promise.all([
+  const [
+    state,
+    enabled,
+    feature,
+    model,
+    dailyLimit,
+    memory,
+    cooldown,
+    groupLimit,
+    groupCooldown,
+    usage,
+  ] = await Promise.all([
     getAiState(ctx.sb),
     ctx.settings.get("ai_enabled"),
     ctx.settings.get("feature_ai"),
@@ -35,6 +46,8 @@ async function renderPanel(ctx: Ctx): Promise<void> {
     ctx.settings.get("ai_daily_limit"),
     ctx.settings.get("ai_memory_messages"),
     ctx.settings.get("ai_fallback_cooldown_seconds"),
+    ctx.settings.get("ai_group_daily_limit"),
+    ctx.settings.get("ai_group_cooldown_seconds"),
     aiUsageToday(ctx.sb, timeZone),
   ]);
 
@@ -62,7 +75,10 @@ async function renderPanel(ctx: Ctx): Promise<void> {
     state.last_error ? `⚠️ آخرین خطا: ${escapeHtml(truncate(state.last_error, 150))}` : "",
     state.next_retry_at ? `⏭ تلاش بعدی: ${faDateTime(state.next_retry_at, timeZone)}` : "",
     "",
-    `سقف روزانه هر کاربر: ${faNum(dailyLimit)} • حافظه: ${faNum(memory)} پیام`,
+    `سقف روزانه چت خصوصی: ${faNum(dailyLimit)} • حافظه: ${faNum(memory)} پیام`,
+    `در گروه، برای هر نفر: ${faNum(groupLimit)} پاسخ در روز • فاصلهٔ پاسخ: ${
+      faNum(groupCooldown)
+    } ثانیه`,
   ].filter(Boolean).join("\n");
 
   const rows: Button[][] = [
@@ -85,6 +101,20 @@ async function renderPanel(ctx: Ctx): Promise<void> {
     [
       { text: "📊 مصرف امروز", callback_data: "a:ai:u", style: "primary" },
       { text: "🧩 دسته‌های پاسخ سریع", callback_data: "a:ai:f", style: "primary" },
+    ],
+    [
+      {
+        text: `👥 سقف روزانهٔ هر کاربر در گروه: ${faNum(groupLimit)}`,
+        callback_data: "a:ai:gd",
+        style: "primary",
+      },
+    ],
+    [
+      {
+        text: `⏱ فاصلهٔ زمانی پاسخ در گروه: ${faNum(groupCooldown)} ثانیه`,
+        callback_data: "a:ai:gc",
+        style: "primary",
+      },
     ],
     [
       {
@@ -163,7 +193,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
 
   if (!sub) {
     if (!(await guardAdmin(ctx, "ai.read"))) return true;
-    await renderPanel(ctx);
+    await renderAiPanel(ctx);
     return true;
   }
 
@@ -185,7 +215,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
     await ctx.settings.set("ai_enabled", !enabled, ctx.userId);
     await logAdminAction(ctx, "ai_toggle", "ai", undefined, { enabled: !enabled });
     await answerCallback(ctx, !enabled ? "هوش مصنوعی روشن شد." : "هوش مصنوعی خاموش شد.");
-    await renderPanel(ctx);
+    await renderAiPanel(ctx);
     return true;
   }
 
@@ -196,7 +226,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
     await ctx.settings.set("ai_memory_messages", next, ctx.userId);
     await logAdminAction(ctx, "ai_memory_toggle", "ai", undefined, { memory: next });
     await answerCallback(ctx, next > 0 ? "حافظه فعال شد." : "حافظه غیرفعال شد.");
-    await renderPanel(ctx);
+    await renderAiPanel(ctx);
     return true;
   }
 
@@ -228,25 +258,60 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
     await resetAiState(ctx.sb);
     await logAdminAction(ctx, "ai_state_reset", "ai");
     await answerCallback(ctx, "وضعیت هوش مصنوعی از نو تنظیم شد.");
-    await renderPanel(ctx);
+    await renderAiPanel(ctx);
     return true;
   }
 
-  if (sub === "pe" || sub === "l" || sub === "m") {
+  if (sub === "pe" || sub === "l" || sub === "m" || sub === "gd" || sub === "gc") {
     if (!(await guardAdmin(ctx, "ai.manage"))) return true;
     const map: Record<
       string,
-      { key: "ai_persona" | "ai_daily_limit" | "ai_model"; label: string }
+      {
+        key:
+          | "ai_persona"
+          | "ai_daily_limit"
+          | "ai_model"
+          | "ai_group_daily_limit"
+          | "ai_group_cooldown_seconds";
+        label: string;
+        hint: string;
+      }
     > = {
-      pe: { key: "ai_persona", label: "شخصیت AI" },
-      l: { key: "ai_daily_limit", label: "سقف روزانه AI" },
-      m: { key: "ai_model", label: "مدل هوش مصنوعی" },
+      pe: {
+        key: "ai_persona",
+        label: "شخصیت AI",
+        hint: "متن شخصیت ربات را بفرستید.",
+      },
+      l: {
+        key: "ai_daily_limit",
+        label: "سقف روزانهٔ هوش مصنوعی (چت خصوصی)",
+        hint: "یک عدد بین ۰ تا ۱۰۰۰ بفرستید (۰ = بدون محدودیت).",
+      },
+      gd: {
+        key: "ai_group_daily_limit",
+        label: "سقف روزانهٔ هوش مصنوعی در گروه (برای هر کاربر)",
+        hint: "یک عدد بین ۰ تا ۱۰۰ بفرستید (۰ = بدون محدودیت).",
+      },
+      gc: {
+        key: "ai_group_cooldown_seconds",
+        label: "فاصلهٔ زمانی پاسخ هوش مصنوعی در گروه",
+        hint: "یک عدد بین ۰ تا ۳۶۰۰ ثانیه بفرستید (۰ = بدون فاصله).",
+      },
+      m: {
+        key: "ai_model",
+        label: "مدل هوش مصنوعی",
+        hint: "نام مدل را بفرستید.",
+      },
     };
     const target = map[sub];
     await askForInput(
       ctx,
       "admin_setting",
-      `✏️ <b>${target.label}</b>\nمقدار جدید را بفرستید.`,
+      [
+        `✏️ <b>${target.label}</b>`,
+        target.hint,
+        "مقدار جدید را بفرستید.",
+      ].join("\n"),
       { key: target.key },
       "a:ai",
     );
@@ -282,7 +347,7 @@ export async function startUserChat(ctx: Ctx): Promise<void> {
     [
       "🤖 <b>حالت چت هوشمند فعال شد</b>",
       "",
-      "سوالت را بنویس تا پاسخ بدهم. اگر سرویس هوش مصنوعی در دسترس نباشد، از دانش ذخیره‌شده استفاده می‌کنم.",
+      "سوالت را بنویس تا پاسخ بدهم.",
       `سقف روزانه: ${faNum(limit)} درخواست.`,
       "",
       "<i>برای خروج /cancel را بفرستید.</i>",
@@ -316,7 +381,12 @@ export async function handleUserAiMessage(ctx: Ctx, text: string): Promise<void>
       .eq("request_type", "chat")
       .gte("created_at", startOfDayIso(timeZone, ctx.now)));
 
-  await send(ctx, "⏳ در حال فکر کردن…");
+  // نشانگر «در حال تایپ» جای پیام «در حال فکر کردن» تا پاسخ بی‌معطلی برسد.
+  try {
+    await ctx.tg.call("sendChatAction", { chat_id: ctx.chatId, action: "typing" });
+  } catch {
+    // نشانگر تایپ اختیاری است
+  }
 
   const reply = await answerQuestion(
     { sb: ctx.sb, settings: ctx.settings, cfg: ctx.cfg },
@@ -328,9 +398,7 @@ export async function handleUserAiMessage(ctx: Ctx, text: string): Promise<void>
   );
 
   const footer: string[] = [];
-  if (reply.quotaExhausted) {
-    footer.push(`<i>سهمیه امروز (${faNum(limit)}) پر شده؛ پاسخ از دانش ذخیره‌شده است.</i>`);
-  } else if (used + 1 >= limit && limit > 0) {
+  if (!reply.quotaExhausted && used + 1 >= limit && limit > 0) {
     footer.push(`<i>این آخرین درخواست امروز شما بود.</i>`);
   }
 
