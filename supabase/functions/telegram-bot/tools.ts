@@ -42,38 +42,38 @@ async function renderPanel(ctx: Ctx): Promise<void> {
     `دیتابیس: ${dbOk ? "✅ سالم" : "❌ خطا"}`,
     `ربات: @${ctx.cfg.botUsername}`,
     `زمان: ${faDateTime(ctx.now, timeZone)}`,
-    `AI: ${ctx.cfg.geminiApiKey ? "کلید تنظیم شده" : "بدون کلید (Smart Fallback)"}`,
+    `هوش مصنوعی: ${ctx.cfg.geminiApiKey ? "وصل است" : "وصل نشده (پاسخ‌های سریع داخلی)"}`,
     "",
-    "<i>ابزارهای تشخیصی فقط برای مدیران مجاز و با ثبت در Audit.</i>",
+    "<i>ابزارهای تشخیصی فقط برای مدیران مجاز و با ثبت در سوابق.</i>",
   ].join("\n");
 
   const rows: Button[][] = [
     [
-      { text: "🤖 اطلاعات ربات", callback_data: "a:tl:me" },
-      { text: "🔗 Webhook", callback_data: "a:tl:wh" },
+      { text: "🤖 اطلاعات ربات", callback_data: "a:tl:me", style: "primary" },
+      { text: "🔗 اتصال تلگرام", callback_data: "a:tl:wh", style: "primary" },
     ],
     [
-      { text: "📋 ثبت دستورات", callback_data: "a:tl:cmd" },
-      { text: "⚙️ اجرای scheduler", callback_data: "a:tl:run" },
+      { text: "📋 ثبت دستورات", callback_data: "a:tl:cmd", style: "primary" },
+      { text: "⚙️ اجرای زمان‌بند", callback_data: "a:tl:run", style: "primary" },
     ],
     [
-      { text: "🧪 تست AI", callback_data: "a:tl:ai" },
-      { text: "🗄 شمارش دیتابیس", callback_data: "a:tl:db" },
+      { text: "🧪 تست هوش مصنوعی", callback_data: "a:tl:ai", style: "primary" },
+      { text: "🗄 شمارش حافظهٔ ربات", callback_data: "a:tl:db", style: "primary" },
     ],
     [
-      { text: "🧹 پاک‌سازی داده", callback_data: "a:tl:pr" },
-      { text: "🔑 Sessionها", callback_data: "a:tl:ses" },
+      { text: "🧹 پاک‌سازی داده", callback_data: "a:tl:pr", style: "danger" },
+      { text: "🔑 گفتگوهای باز", callback_data: "a:tl:ses", style: "primary" },
     ],
-    [{ text: "ℹ️ تنظیمات محیط", callback_data: "a:tl:v" }],
-    [{ text: "🏠 داشبورد", callback_data: "a:h" }],
+    [{ text: "ℹ️ تنظیمات محیط", callback_data: "a:tl:v", style: "primary" }],
+    [{ text: "🏠 داشبورد", callback_data: "a:h", style: "success" }],
   ];
   await editOrSend(ctx, text, keyboard(rows));
 }
 
 function backRow(callback = "a:tl"): Button[] {
   return [
-    { text: "🔄 به‌روزرسانی", callback_data: callback },
-    { text: "🏠 داشبورد", callback_data: "a:h" },
+    { text: "🔄 به‌روزرسانی", callback_data: callback, style: "primary" },
+    { text: "🏠 داشبورد", callback_data: "a:h", style: "success" },
   ];
 }
 
@@ -117,10 +117,10 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
       await editOrSend(
         ctx,
         [
-          sectionTitle("🔗 وضعیت Webhook"),
+          sectionTitle("🔗 وضعیت اتصال تلگرام"),
           divider(),
-          `URL: <code>${escapeHtml(url || "تنظیم نشده")}</code>`,
-          `Secret Token: ${ctx.cfg.webhookSecret ? "✅" : "❌"}`,
+          `آدرس: <code>${escapeHtml(url || "تنظیم نشده")}</code>`,
+          `اتصال امن: ${ctx.cfg.webhookSecret ? "✅" : "❌"}`,
           `آپدیت‌های در انتظار: ${faNum(pending)}`,
           lastError ? `⚠️ آخرین خطا: ${escapeHtml(truncate(lastError, 200))}` : "",
         ].filter(Boolean).join("\n"),
@@ -163,7 +163,7 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
       });
       await logAdminAction(ctx, "scheduler_run", "system");
       const text = [
-        sectionTitle("⚙️ نتیجه اجرای دستی scheduler"),
+        sectionTitle("⚙️ نتیجه اجرای دستی زمان‌بند"),
         divider(),
         `📢 تبلیغ: ${faNum(summary.ads.sent)} ارسال • ${faNum(summary.ads.failed)} خطا • ${
           faNum(summary.ads.postponed)
@@ -177,17 +177,17 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
         `📨 همگانی: ${faNum(summary.broadcast.sent)} ارسال • باقی ${
           faNum(summary.broadcast.remaining)
         }`,
-        `🤖 AI: ${
+        `🤖 هوش مصنوعی: ${
           summary.aiHealth.checked ? (summary.aiHealth.ok ? "سالم" : "خطا") : "بررسی لازم نبود"
         }`,
         `📊 تجمیع آمار: ${summary.stats.aggregated ? "انجام شد" : "قبلاً انجام شده"}`,
-        `🧹 session حذف‌شده: ${faNum(summary.cleanup.sessions)}`,
+        `🧹 گفتگوهای حذف‌شده: ${faNum(summary.cleanup.sessions)}`,
         "",
         `<i>شروع: ${summary.startedAt} — پایان: ${summary.finishedAt}</i>`,
       ].join("\n");
       await editOrSend(ctx, text, keyboard([backRow("a:tl:run")]));
     } catch (error) {
-      await answerCallback(ctx, "اجرای scheduler ناموفق بود.", true);
+      await answerCallback(ctx, "اجرای زمان‌بند ناموفق بود.", true);
       await ctx.log.error("manual scheduler failed", { error: (error as Error).message });
     }
     return true;
@@ -203,7 +203,7 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
     await editOrSend(
       ctx,
       [
-        sectionTitle("🧪 تست اتصال AI"),
+        sectionTitle("🧪 تست اتصال هوش مصنوعی"),
         divider(),
         result.ok ? "✅ اتصال موفق" : "❌ اتصال ناموفق",
         result.message,
@@ -248,7 +248,7 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
     const days = await ctx.settings.get("data_retention_days");
     await askConfirm(
       ctx,
-      `🧹 <b>پاک‌سازی داده‌های قدیمی</b>\nلاگ‌ها، مصرف AI، گفت‌وگوها، صف‌های قدیمی و sessionهای منقضی قدیمی‌تر از ${
+      `🧹 <b>پاک‌سازی داده‌های قدیمی</b>\nلاگ‌ها، مصرف هوش مصنوعی، گفت‌وگوها، صف‌های قدیمی و گفتگوهای منقضی قدیمی‌تر از ${
         faNum(days)
       } روز حذف می‌شوند.`,
       "prune_data",
@@ -266,7 +266,7 @@ export async function handleToolsCallback(ctx: Ctx, parts: string[]): Promise<bo
     );
     await askConfirm(
       ctx,
-      `🔑 پاک‌سازی ${faNum(active)} session منقضی؟`,
+      `🔑 پاک‌سازی ${faNum(active)} گفتگوی منقضی؟`,
       "sessions_purge",
       {},
       "a:tl",
