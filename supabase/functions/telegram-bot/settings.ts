@@ -14,6 +14,14 @@ import {
 } from "../_shared/validation.ts";
 import type { AdminRow, UserRow } from "../_shared/types.ts";
 import {
+  loadCustomPresets,
+  MAX_CUSTOM_PRESETS,
+  MAX_PRESET_REPLY,
+  PRESET_SETTINGS_KEY,
+  sanitizePresetWord,
+} from "../_shared/presets.ts";
+import { invalidatePresetCache } from "./quick.ts";
+import {
   answerCallback,
   askConfirm,
   askForInput,
@@ -258,7 +266,8 @@ async function renderGeneral(ctx: Ctx): Promise<void> {
     }
   }
   rows.push([{ text: "🧩 ماژول‌ها", callback_data: "a:se:m" }]);
-  rows.push([{ text: "🏠 داشبورد", callback_data: "a:h" }]);
+  rows.push([{ text: "⚡ کلمات آماده", callback_data: "a:se:pk", style: "primary" }]);
+  rows.push([{ text: "🏠 داشبورد", callback_data: "a:h", style: "success" }]);
 
   await editOrSend(
     ctx,
@@ -313,6 +322,46 @@ async function renderLimits(ctx: Ctx): Promise<void> {
       LIMIT_KEYS.map((key) =>
         `• <b>${labelFor(key)}</b>: ${displayValue(all[key] ?? DEFAULT_SETTINGS[key])}`
       ).join("\n"),
+    ].join("\n"),
+    keyboard(rows),
+  );
+}
+
+/** ⚡ کلمات آمادهٔ سفارشی — افزودن و حذف از داشبورد. */
+async function renderPresets(ctx: Ctx): Promise<void> {
+  const items = await loadCustomPresets(ctx.settings);
+  const rows: Button[][] = items.map((item, index) => [{
+    text: `🗑 حذف «${truncate(item.word, 22)}»`,
+    callback_data: `a:se:pkx:${index}`,
+    style: "danger" as const,
+  }]);
+  rows.push([{ text: "➕ افزودن کلمهٔ آماده", callback_data: "a:se:pka", style: "success" }]);
+  rows.push([{ text: "🏠 داشبورد", callback_data: "a:h", style: "success" }]);
+
+  const customLines = items.length === 0
+    ? "<i>هنوز کلمهٔ سفارشی نداری؛ با دکمهٔ پایین اضافه کن.</i>"
+    : [
+      `<b>کلمات سفارشی (${faNum(items.length)}):</b>`,
+      ...items.map((item, index) =>
+        `${faNum(index + 1)}. <code>${escapeHtml(item.word)}</code> ← ${
+          escapeHtml(truncate(item.text, 40))
+        }`
+      ),
+    ].join("\n");
+
+  await editOrSend(
+    ctx,
+    [
+      sectionTitle("⚡ کلمات آماده"),
+      divider(),
+      "این کلمه‌ها همان لحظه جواب می‌گیرند؛ نه فکر کردن، نه هوش مصنوعی.",
+      "",
+      "<b>کلمات داخلی:</b>",
+      "بیو · ساعت · تاریخ · آیدی · راهنما · تاس · شیر یا خط · جمله · پیشنهاد انیمه",
+      "",
+      customLines,
+      "",
+      `<i>حداکثر ${faNum(MAX_CUSTOM_PRESETS)} کلمه؛ هر کلمه حداقل ۲ و حداکثر ۳۰ نویسه.</i>`,
     ].join("\n"),
     keyboard(rows),
   );
@@ -385,6 +434,54 @@ export async function handleSettingsCallback(ctx: Ctx, parts: string[]): Promise
   if (sub === "l") {
     if (!(await guardAdmin(ctx, "settings.manage"))) return true;
     await renderLimits(ctx);
+    return true;
+  }
+
+  if (sub === "pk") {
+    if (!(await guardAdmin(ctx, "settings.manage"))) return true;
+    await renderPresets(ctx);
+    return true;
+  }
+
+  if (sub === "pka") {
+    if (!(await guardAdmin(ctx, "settings.manage"))) return true;
+    const items = await loadCustomPresets(ctx.settings);
+    if (items.length >= MAX_CUSTOM_PRESETS) {
+      await answerCallback(ctx, `سقف ${MAX_CUSTOM_PRESETS} کلمه پر شده است.`, true);
+      return true;
+    }
+    await askForInput(
+      ctx,
+      "preset_add",
+      [
+        "➕ <b>کلمهٔ آمادهٔ جدید</b>",
+        "کلمه و پاسخ را با علامت | جدا کن:",
+        "<code>ساعت کاری | از شنبه تا چهارشنبه ۹ تا ۱۷</code>",
+        "",
+        "<i>کلمه حداقل ۲ و حداکثر ۳۰ نویسه است و به بزرگی/کوچکی حروف و نیم‌فاصله حساس نیست.</i>",
+      ].join("\n"),
+      {},
+      "a:se:pk",
+    );
+    return true;
+  }
+
+  if (sub === "pkx") {
+    if (!(await guardAdmin(ctx, "settings.manage"))) return true;
+    const index = Number(parts[3]);
+    const items = await loadCustomPresets(ctx.settings);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= items.length) {
+      await answerCallback(ctx, "این کلمه پیدا نشد.", true);
+      return true;
+    }
+    const removed = items.splice(index, 1)[0];
+    await ctx.settings.set(PRESET_SETTINGS_KEY, items, ctx.userId);
+    invalidatePresetCache();
+    await logAdminAction(ctx, "preset_remove", "setting", PRESET_SETTINGS_KEY, {
+      word: removed?.word,
+    });
+    await answerCallback(ctx, `«${removed?.word ?? ""}» حذف شد.`);
+    await renderPresets(ctx);
     return true;
   }
 
@@ -597,6 +694,43 @@ export async function handleSettingsInput(
     } else {
       await renderGeneral(ctx);
     }
+    return true;
+  }
+
+  if (action === "preset_add") {
+    if (!(await guardAdmin(ctx, "settings.manage"))) return true;
+    const raw = text.trim();
+    const separator = raw.search(/[|=\uFF5C]/);
+    if (separator <= 0) {
+      await send(ctx, "⚠️ قالب درست: کلمه | پاسخ");
+      return true;
+    }
+    const word = sanitizePresetWord(raw.slice(0, separator));
+    const replyText = raw.slice(separator + 1).trim().slice(0, MAX_PRESET_REPLY);
+    if (word.length < 2) {
+      await send(ctx, "⚠️ کلمه باید حداقل ۲ نویسه باشد.");
+      return true;
+    }
+    if (replyText.length === 0) {
+      await send(ctx, "⚠️ پاسخ کلمه نمی‌تواند خالی باشد.");
+      return true;
+    }
+    const items = await loadCustomPresets(ctx.settings);
+    const existing = items.findIndex((item) => item.word === word);
+    if (existing >= 0) {
+      items[existing] = { word, text: replyText };
+    } else {
+      if (items.length >= MAX_CUSTOM_PRESETS) {
+        await send(ctx, `⚠️ حداکثر ${MAX_CUSTOM_PRESETS} کلمه می‌توانی داشته باشی.`);
+        return true;
+      }
+      items.push({ word, text: replyText });
+    }
+    await ctx.settings.set(PRESET_SETTINGS_KEY, items, ctx.userId);
+    invalidatePresetCache();
+    await logAdminAction(ctx, "preset_save", "setting", PRESET_SETTINGS_KEY, { word });
+    await send(ctx, `✅ «${word}» آماده شد.`);
+    await renderPresets(ctx);
     return true;
   }
 
