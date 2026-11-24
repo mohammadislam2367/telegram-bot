@@ -8,6 +8,7 @@ import type {
   MediaType,
   TgChatFullInfo,
   TgChatMember,
+  TgInlineKeyboardButton,
   TgInlineKeyboardMarkup,
   TgMessage,
   TgUser,
@@ -226,7 +227,7 @@ export class TelegramApi {
       parse_mode: "HTML",
       link_preview_options: { is_disabled: extra.preview !== true },
     };
-    if (extra.markup) payload.reply_markup = extra.markup;
+    if (extra.markup) payload.reply_markup = styleMarkup(extra.markup);
     if (extra.replyTo) payload.reply_to_message_id = extra.replyTo;
     if (extra.silent) payload.disable_notification = true;
     return this.call<TgMessage>("sendMessage", payload);
@@ -245,7 +246,7 @@ export class TelegramApi {
       parse_mode: "HTML",
       link_preview_options: { is_disabled: extra.preview !== true },
     };
-    if (extra.markup) payload.reply_markup = extra.markup;
+    if (extra.markup) payload.reply_markup = styleMarkup(extra.markup);
     return this.call<TgMessage | true>("editMessageText", payload);
   }
 
@@ -257,7 +258,7 @@ export class TelegramApi {
     return this.call<TgMessage | true>("editMessageReplyMarkup", {
       chat_id: chatId,
       message_id: messageId,
-      reply_markup: markup ?? { inline_keyboard: [] },
+      reply_markup: styleMarkup(markup) ?? { inline_keyboard: [] },
     });
   }
 
@@ -286,7 +287,7 @@ export class TelegramApi {
       parse_mode: "HTML",
     };
     if (extra.caption) payload.caption = extra.caption;
-    if (extra.markup) payload.reply_markup = extra.markup;
+    if (extra.markup) payload.reply_markup = styleMarkup(extra.markup);
     if (extra.silent) payload.disable_notification = true;
     return this.call<TgMessage>(MEDIA_METHOD[kind], payload);
   }
@@ -397,4 +398,28 @@ export function splitMessage(text: string, limit = 3900): string[] {
   }
   if (rest.length > 0) chunks.push(rest);
   return chunks;
+}
+
+// ─── رنگ‌آمیزی خودکار دکمه‌ها ──────────────────────────────────────────────────
+// هر دکمه‌ای که به تلگرام می‌رود رنگ می‌گیرد: قرمز=بازگشت/حذف/خاموش
+// سبز=خانه/تأیید/روشن/افزودن و آبی برای بقیهٔ اقدام‌ها.
+
+const DANGER_LABEL = /(بازگشت|حذف|خاموش|غیرفعال|لغو|مسدود|توقف|بن |❌|🗑|⛔|🚫|🔴)/;
+const SUCCESS_LABEL = /(خانه|داشبورد|منوی اصلی|تأیید|روشن|فعال|افزودن|✅|🟢|➕)/;
+
+function styleButton(button: TgInlineKeyboardButton): TgInlineKeyboardButton {
+  if (button.style) return button;
+  if (DANGER_LABEL.test(button.text)) return { ...button, style: "danger" };
+  if (SUCCESS_LABEL.test(button.text)) return { ...button, style: "success" };
+  return { ...button, style: "primary" };
+}
+
+/** هر کیبورد خروجی را رنگی می‌کند تا هیچ دکمه‌ای خاکستری نماند. */
+export function styleMarkup(
+  markup?: TgInlineKeyboardMarkup,
+): TgInlineKeyboardMarkup | undefined {
+  if (!markup) return markup;
+  return {
+    inline_keyboard: markup.inline_keyboard.map((row) => row.map(styleButton)),
+  };
 }
