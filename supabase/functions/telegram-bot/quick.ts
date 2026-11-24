@@ -58,7 +58,59 @@ const TAGLINES: readonly string[] = [
   "عضو باشگاه «فقط یک قسمت دیگر» ⏱",
   "عاشق انیمه‌های کوتاه و پرمعنا ✨",
   "کاربری که همه را می‌شناسد 🕵️",
+  "کلکسیونر پایان‌های تلخ و شیرین 🎭",
+  "طرفدار انیمه‌های ورزشی و انگیزشی 🏐",
+  "عاشق طراحی شخصیت و رنگ‌بندی 🎨",
+  "کسی که اوست را از مانگا خوانده 📖",
+  "هوادار دوبلهٔ فارسی قدیمی 📼",
+  "عضو تیم «فصل بعدی حتماً می‌بینم» 📅",
+  "شکارچی OSTهای کمیاب 🎧",
+  "طرفدار انیمه‌های سایبرپانک و نئون 🌃",
 ];
+
+function presetGreeting(): string {
+  return [
+    sectionTitle("👋 سلام!"),
+    "من دستیار سریع این گفتگو هستم؛ هر کلمه بگویی، همان لحظه جواب می‌دهم.",
+    "",
+    "🔥 امتحان کن: <b>بیو</b> · <b>ساعت</b> · <b>تاریخ</b> · <b>آیدی</b> · <b>تاس</b> · <b>جمله</b> · <b>پیشنهاد انیمه</b>",
+  ].join("\n");
+}
+
+function presetAbout(botUsername: string): string {
+  return [
+    sectionTitle("🤖 معرفی کوتاه"),
+    "دستیار سریع این گفتگو هستم: کلمات آماده، شناسه، ساعت، بیو و کمی سرگرمی — بدون معطلی و بدون فکر کردن.",
+    "",
+    "🧩 چت خصوصی باز کن و هر چیزی بپرس:",
+    `<code>@${escapeHtml(botUsername)}</code>`,
+  ].join("\n");
+}
+
+function presetPassword(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const password = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+  return [
+    sectionTitle("🔐 رمز پیشنهادی"),
+    `<code>${escapeHtml(password)}</code>`,
+    "",
+    "<i>۱۶ نویسه: حرف بزرگ و کوچک، عدد و نماد. هر بار رمز تازه ساخته می‌شود.</i>",
+  ].join("\n");
+}
+
+function presetRandom(): string {
+  const bytes = new Uint8Array(2);
+  crypto.getRandomValues(bytes);
+  const hundred = 1 + (new DataView(bytes.buffer).getUint16(0) % 100);
+  const six = 1 + (bytes[0] % 6);
+  return [
+    sectionTitle("🎲 عدد شانسی"),
+    `بین ۱ تا ۱۰۰: <b>${hundred}</b>`,
+    `تاس شش‌تایی: <b>${six}</b>`,
+  ].join("\n");
+}
 
 export function taglineFor(seed: number): string {
   const index = Math.abs(Math.trunc(seed)) % TAGLINES.length;
@@ -256,7 +308,11 @@ export type PresetId =
   | "coin"
   | "dice"
   | "anime"
-  | "quote";
+  | "quote"
+  | "greeting"
+  | "about"
+  | "password"
+  | "random";
 
 const PRESET_WORDS: Record<PresetId, readonly string[]> = {
   bio: ["بیو", "بیوگرافی", "بیو من", "کارت معرفی", "bio", "biography"],
@@ -268,6 +324,10 @@ const PRESET_WORDS: Record<PresetId, readonly string[]> = {
   dice: ["تاس", "تاس بنداز", "dice"],
   anime: ["انیمه پیشنهاد", "پیشنهاد انیمه", "یه انیمه", "چی ببینم", "anime pick"],
   quote: ["جمله", "جمله انگیزشی", "یه جمله بگو", "نقل قول", "quote"],
+  greeting: ["سلام", "درود", "سلام علیکم"],
+  about: ["کی هستی", "تو کی هستی", "خودت رو معرفی کن", "معرفی ربات", "who are you"],
+  password: ["رمز بساز", "پسورد بساز", "رمز امن", "password"],
+  random: ["عدد شانسی", "عدد تصادفی", "یه عدد بده", "random number"],
 };
 
 /** عبارت یکسان‌شده‌ای که موتور سریع داخلی برای هر کلیدواژه جواب می‌دهد. */
@@ -380,6 +440,14 @@ export async function handlePresetTrigger(deps: QuickDeps, message: TgMessage): 
       body = bioText(target);
     } else if (builtin === "id") {
       body = presetIdText(from, chat.id);
+    } else if (builtin === "greeting") {
+      body = presetGreeting();
+    } else if (builtin === "about") {
+      body = presetAbout(deps.cfg.botUsername);
+    } else if (builtin === "password") {
+      body = presetPassword();
+    } else if (builtin === "random") {
+      body = presetRandom();
     } else {
       let timeZone = "Asia/Tehran";
       try {
