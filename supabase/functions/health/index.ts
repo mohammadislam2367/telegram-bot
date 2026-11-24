@@ -170,11 +170,26 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (deep) {
     try {
       const tg = new TelegramApi(cfg.botToken);
-      const me = await tg.getMe();
+      const me = await tg.getMe() as {
+        id: number;
+        username?: string;
+        can_join_groups?: boolean;
+        can_read_all_group_messages?: boolean;
+      };
 
       checks.telegram = {
         ok: true,
         detail: `@${me.username ?? me.id}`,
+      };
+
+      // گروه‌ها: با privacy mode روشن، ربات پیام‌های عادی گروه را نمی‌بیند.
+      checks.groups = {
+        ok: me.can_join_groups !== false && me.can_read_all_group_messages === true,
+        detail: {
+          canJoinGroups: me.can_join_groups !== false,
+          readsAllGroupMessages: me.can_read_all_group_messages === true,
+          privacyMode: me.can_read_all_group_messages === true ? "off" : "on",
+        },
       };
 
       const info = await tg.getWebhookInfo() as WebhookInfo;
@@ -207,7 +222,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   return jsonResponse({
     ok,
     service: SERVICE,
-    version: "1.2.0",
+    version: "1.3.0",
     time: new Date().toISOString(),
     checks,
   }, ok ? 200 : 503);
