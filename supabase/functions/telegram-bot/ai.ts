@@ -84,44 +84,45 @@ export async function renderAiPanel(ctx: Ctx): Promise<void> {
   const rows: Button[][] = [
     [
       {
-        text: `هوش مصنوعی: ${enabled ? "🟢 خاموش کن" : "🔴 روشن کن"}`,
+        text: enabled ? "🔴 خاموش کردن هوش مصنوعی" : "🟢 روشن کردن هوش مصنوعی",
         callback_data: "a:ai:t",
         style: enabled ? "danger" : "success",
       },
       { text: "🧪 تست اتصال", callback_data: "a:ai:h", style: "primary" },
     ],
     [
-      { text: "✏️ شخصیت ربات", callback_data: "a:ai:pe", style: "primary" },
-      { text: "🔢 سقف روزانه", callback_data: "a:ai:l", style: "primary" },
+      { text: "✏️ شخصیت و لحن ربات", callback_data: "a:ai:pe", style: "primary" },
+      { text: "🧠 مدل پاسخگویی", callback_data: "a:ai:m", style: "primary" },
     ],
-    [
-      { text: "🧠 مدل", callback_data: "a:ai:m", style: "primary" },
-      { text: "🧹 ریست وضعیت", callback_data: "a:ai:r", style: "primary" },
-    ],
-    [
-      { text: "📊 مصرف امروز", callback_data: "a:ai:u", style: "primary" },
-      { text: "🧩 دسته‌های پاسخ سریع", callback_data: "a:ai:f", style: "primary" },
-    ],
-    [
-      {
-        text: `👥 سقف روزانهٔ هر کاربر در گروه: ${faNum(groupLimit)}`,
-        callback_data: "a:ai:gd",
-        style: "primary",
-      },
-    ],
-    [
-      {
-        text: `⏱ فاصلهٔ زمانی پاسخ در گروه: ${faNum(groupCooldown)} ثانیه`,
-        callback_data: "a:ai:gc",
-        style: "primary",
-      },
-    ],
+    [{
+      text: `🔢 سقف روزانهٔ چت خصوصی: ${faNum(dailyLimit)}`,
+      callback_data: "a:ai:l",
+      style: "primary",
+    }],
+    [{
+      text: `👥 سقف روزانهٔ گروه (برای هر نفر): ${faNum(groupLimit)}`,
+      callback_data: "a:ai:gd",
+      style: "primary",
+    }],
+    [{
+      text: `⏱ فاصلهٔ پاسخ در گروه: ${faNum(groupCooldown)} ثانیه`,
+      callback_data: "a:ai:gc",
+      style: "primary",
+    }],
     [
       {
-        text: "🧠 حافظه: " + (memory > 0 ? "🟢" : "🔴"),
+        text: `💾 حافظهٔ گفت‌وگو: ${memory > 0 ? "🟢 روشن" : "🔴 خاموش"}`,
         callback_data: "a:ai:mem",
         style: "primary",
       },
+      { text: "♻️ بازنشانی وضعیت", callback_data: "a:ai:r", style: "primary" },
+    ],
+    [
+      { text: "📊 مصرف امروز", callback_data: "a:ai:u", style: "primary" },
+      { text: "📚 پاسخ‌های آماده", callback_data: "a:ai:f", style: "primary" },
+    ],
+    [
+      { text: "⚡ کلمات آماده", callback_data: "a:se:pk", style: "primary" },
       { text: "🏠 داشبورد", callback_data: "a:h", style: "success" },
     ],
   ];
