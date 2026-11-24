@@ -98,6 +98,8 @@ export interface TgInlineKeyboardButton {
   text: string;
   callback_data?: string;
   url?: string;
+  /** رنگ دکمه — از Bot API 9.4 پشتیبانی می‌شود. */
+  style?: "danger" | "success" | "primary";
 }
 
 export interface TgInlineKeyboardMarkup {
