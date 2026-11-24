@@ -33,7 +33,7 @@ export function confirmKeyboard(confirmData: string, cancelData: string): TgInli
   ]);
 }
 
-const HOME_LABELS = ["داشبورد", "منوی اصلی"];
+const HOME_LABELS = ["خانه", "داشبورد", "منوی اصلی"];
 const BACK_LABEL = "بازگشت";
 
 function isBackButton(btn: Button): boolean {
@@ -45,35 +45,45 @@ function isHomeButton(btn: Button): boolean {
 }
 
 /**
- * تضمین دکمهٔ «↩️ بازگشت» در همهٔ پنل‌ها.
- * اگر پنل از قبل دکمهٔ بازگشت داشته باشد فقط رنگ آن اصلاح می‌شود؛
- * اگر ردیف خانه (داشبورد/منوی اصلی) وجود داشته باشد بازگشت کنار آن می‌نشیند.
+ * تضمین دکمهٔ «↩️ بازگشت» و «🏠 خانه» در همهٔ پنل‌ها.
+ * بازگشت همیشه به بخش قبلی می‌رود و خانه به منوی اصلی؛ پس هرگز یکی نمی‌شوند.
  */
 export function ensureBackButton(
   markup: TgInlineKeyboardMarkup | undefined,
   backTo: string,
+  homeTo = backTo,
 ): TgInlineKeyboardMarkup | undefined {
   if (!markup) return markup;
   const rows = markup.inline_keyboard.map((row) => row.map((btn) => ({ ...btn })));
   if (rows.length === 0) return markup;
 
   const flat = rows.flat();
-  if (flat.some(isBackButton)) {
-    for (const row of rows) {
-      for (const btn of row) if (isBackButton(btn)) btn.style = "danger";
-    }
-    return { inline_keyboard: rows };
-  }
-
-  const back = backButton(backTo);
-  for (const row of rows) {
-    if (row.length === 1 && isHomeButton(row[0])) {
-      row.unshift(back);
-      return { inline_keyboard: rows };
+  const back = flat.find(isBackButton);
+  if (back) {
+    back.style = "danger";
+    // اگر بازگشت به همان خانه اشاره می‌کرد، به بخش قبلی برگردانده می‌شود.
+    if (!back.callback_data || (back.callback_data === homeTo && backTo !== homeTo)) {
+      back.callback_data = backTo;
     }
   }
 
-  rows.push([back]);
+  const hasHome = flat.some(isHomeButton);
+  if (!hasHome) {
+    const home = button("🏠 خانه", homeTo, "success");
+    if (back) {
+      const row = rows.find((item) => item.includes(back));
+      if (row && row.length < 2) row.push(home);
+      else rows.push([home]);
+    } else {
+      rows.push([backButton(backTo), home]);
+    }
+  } else if (!back) {
+    const homeRow = rows.find((row) => row.some(isHomeButton));
+    const backBtn = backButton(backTo);
+    if (homeRow && homeRow.length < 2) homeRow.unshift(backBtn);
+    else rows.push([backBtn]);
+  }
+
   return { inline_keyboard: rows };
 }
 
