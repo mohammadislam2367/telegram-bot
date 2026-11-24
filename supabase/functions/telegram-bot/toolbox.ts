@@ -7,7 +7,7 @@ import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { TgCallbackQuery, TgMessage } from "../_shared/types.ts";
-import { keyboard } from "../_shared/keyboards.ts";
+import { backButton, keyboard } from "../_shared/keyboards.ts";
 import { divider, sectionTitle } from "../_shared/texts.ts";
 import {
   clockInfo,
@@ -47,7 +47,7 @@ function menuText(): string {
     "📝 <code>/count متن</code> — شمارش کلمه و حرف",
     "🏓 <code>/ping</code> — سرعت پاسخ",
     divider(),
-    "<i>همه‌ی این‌ها آفلاین کار می‌کنند؛ حتی وقتی هوش مصنوعی خاموش است.</i>",
+    "<i>همه‌ی این‌ها فوری جواب می‌دهند و به هوش مصنوعی نیاز ندارند.</i>",
   ].join("\n");
 }
 
@@ -168,7 +168,11 @@ export async function handleToolboxCallback(
     // پاسخ به دکمه اختیاری است
   }
 
-  const markup = keyboard([[{ text: "🏠 منوی اصلی", callback_data: "u:m" }]]);
+  const markup = keyboard([[backButton("u:m", "↩️ بازگشت"), {
+    text: "🏠 منوی اصلی",
+    callback_data: "u:m",
+    style: "success",
+  }]]);
   const chatId = cq.message?.chat.id;
   if (chatId && cq.message) {
     try {
