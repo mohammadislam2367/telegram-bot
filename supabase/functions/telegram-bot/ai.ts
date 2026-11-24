@@ -47,17 +47,17 @@ async function renderPanel(ctx: Ctx): Promise<void> {
     }`,
     `ماژول AI: ${feature ? "🟢" : "🔴"} • فعال بودن: ${enabled ? "🟢" : "🔴"}`,
     `مدل: <code>${escapeHtml(model)}</code>`,
-    `کلید API: ${ctx.cfg.geminiApiKey ? "✅ تنظیم شده" : "❌ تنظیم نشده (فقط Smart Fallback)"}`,
+    `سرویس هوش مصنوعی: ${ctx.cfg.geminiApiKey ? "✅ وصل" : "❌ وصل نشده (پاسخ‌های سریع داخلی)"}`,
     "",
     "<b>امروز</b>",
     `درخواست: ${faNum(usage.requests)} • جایگزین: ${faNum(usage.fallbacks)}`,
     `سهمیه/محدودیت: ${faNum(usage.quota)} • خطا: ${faNum(usage.errors)}`,
     "",
-    "<b>Smart Fallback</b>",
+    "<b>پاسخ‌های سریع داخلی</b>",
     `پاسخ‌های ذخیره‌شده: <b>${faNum(fallbackCount())}</b> در ${
       faNum(fallbackCategories().length)
     } دسته`,
-    `Cooldown تلاش مجدد: ${faNum(cooldown)} ثانیه`,
+    `فاصلهٔ تلاش مجدد: ${faNum(cooldown)} ثانیه`,
     `آخرین موفقیت: ${faDateTime(state.last_success_at, timeZone)}`,
     state.last_error ? `⚠️ آخرین خطا: ${escapeHtml(truncate(state.last_error, 150))}` : "",
     state.next_retry_at ? `⏭ تلاش بعدی: ${faDateTime(state.next_retry_at, timeZone)}` : "",
@@ -67,24 +67,32 @@ async function renderPanel(ctx: Ctx): Promise<void> {
 
   const rows: Button[][] = [
     [
-      { text: `AI: ${enabled ? "🟢 خاموش کن" : "🔴 روشن کن"}`, callback_data: "a:ai:t" },
-      { text: "🧪 تست اتصال", callback_data: "a:ai:h" },
+      {
+        text: `هوش مصنوعی: ${enabled ? "🟢 خاموش کن" : "🔴 روشن کن"}`,
+        callback_data: "a:ai:t",
+        style: enabled ? "danger" : "success",
+      },
+      { text: "🧪 تست اتصال", callback_data: "a:ai:h", style: "primary" },
     ],
     [
-      { text: "✏️ شخصیت AI", callback_data: "a:ai:pe" },
-      { text: "🔢 سقف روزانه", callback_data: "a:ai:l" },
+      { text: "✏️ شخصیت ربات", callback_data: "a:ai:pe", style: "primary" },
+      { text: "🔢 سقف روزانه", callback_data: "a:ai:l", style: "primary" },
     ],
     [
-      { text: "🧠 مدل", callback_data: "a:ai:m" },
-      { text: "🧹 ریست وضعیت", callback_data: "a:ai:r" },
+      { text: "🧠 مدل", callback_data: "a:ai:m", style: "primary" },
+      { text: "🧹 ریست وضعیت", callback_data: "a:ai:r", style: "primary" },
     ],
     [
-      { text: "📊 مصرف امروز", callback_data: "a:ai:u" },
-      { text: "🧩 دسته‌های Fallback", callback_data: "a:ai:f" },
+      { text: "📊 مصرف امروز", callback_data: "a:ai:u", style: "primary" },
+      { text: "🧩 دسته‌های پاسخ سریع", callback_data: "a:ai:f", style: "primary" },
     ],
     [
-      { text: "🧠 حافظه: " + (memory > 0 ? "🟢" : "🔴"), callback_data: "a:ai:mem" },
-      { text: "🏠 داشبورد", callback_data: "a:h" },
+      {
+        text: "🧠 حافظه: " + (memory > 0 ? "🟢" : "🔴"),
+        callback_data: "a:ai:mem",
+        style: "primary",
+      },
+      { text: "🏠 داشبورد", callback_data: "a:h", style: "success" },
     ],
   ];
   await editOrSend(ctx, text, keyboard(rows));
@@ -110,8 +118,8 @@ async function renderUsage(ctx: Ctx): Promise<void> {
       sectionTitle("📊 مصرف هوش مصنوعی امروز"),
       divider(),
       `کل درخواست قابل پاسخ: ${faNum(summary.requests)}`,
-      `پاسخ از Gemini: ${faNum(summary.requests - summary.fallbacks)}`,
-      `پاسخ Smart Fallback: ${faNum(summary.fallbacks)}`,
+      `پاسخ هوشمند: ${faNum(summary.requests - summary.fallbacks)}`,
+      `پاسخ سریع داخلی: ${faNum(summary.fallbacks)}`,
       `سهمیه تمام/محدودیت: ${faNum(summary.quota)}`,
       `خطا: ${faNum(summary.errors)}`,
       `میانگین تأخیر موفق: ${faNum(avgLatency)}ms`,
@@ -135,13 +143,13 @@ async function renderFallbackCategories(ctx: Ctx): Promise<void> {
   await editOrSend(
     ctx,
     [
-      sectionTitle("🧩 دسته‌های Smart Fallback"),
+      sectionTitle("🧩 دسته‌های پاسخ سریع"),
       divider(),
       ...lines,
       divider(),
       `مجموع: ${faNum(fallbackCount())} پاسخ ذخیره‌شده`,
       "",
-      "<i>این پاسخ‌ها در قطعی Gemini یا اتمام سهمیه (429) استفاده می‌شوند تا ربات از کار نیفتد.</i>",
+      "<i>این پاسخ‌ها وقتی سرویس هوش مصنوعی در دسترس نباشد یا سهمیه تمام شود استفاده می‌شوند تا ربات از کار نیفتد.</i>",
     ].join("\n"),
     keyboard([
       [{ text: "◀️ بازگشت", callback_data: "a:ai" }],
@@ -205,7 +213,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
         result.message,
         `زمان: ${faNum(result.latencyMs)}ms`,
         "",
-        "<i>اگر خطا 429/سهمیه باشد، ربات در حالت Smart Fallback ادامه می‌دهد و پس از cooldown دوباره تلاش می‌کند.</i>",
+        "<i>اگر سهمیه تمام شود، ربات با پاسخ‌های سریع داخلی ادامه می‌دهد و بعداً دوباره تلاش می‌کند.</i>",
       ].join("\n"),
       keyboard([
         [{ text: "🔄 تست مجدد", callback_data: "a:ai:h" }],
@@ -219,7 +227,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
     if (!(await guardAdmin(ctx, "ai.manage"))) return true;
     await resetAiState(ctx.sb);
     await logAdminAction(ctx, "ai_state_reset", "ai");
-    await answerCallback(ctx, "وضعیت AI ریست شد.");
+    await answerCallback(ctx, "وضعیت هوش مصنوعی از نو تنظیم شد.");
     await renderPanel(ctx);
     return true;
   }
@@ -232,7 +240,7 @@ export async function handleAiCallback(ctx: Ctx, parts: string[]): Promise<boole
     > = {
       pe: { key: "ai_persona", label: "شخصیت AI" },
       l: { key: "ai_daily_limit", label: "سقف روزانه AI" },
-      m: { key: "ai_model", label: "مدل Gemini" },
+      m: { key: "ai_model", label: "مدل هوش مصنوعی" },
     };
     const target = map[sub];
     await askForInput(
