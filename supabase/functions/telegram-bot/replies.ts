@@ -68,12 +68,11 @@ async function aiQuotaFor(
     deps.settings.get("ai_group_daily_limit"),
   ]);
   const used = await dailyAiRequests(deps.sb, userId, timeZone);
-  const gate = deps.limiter.hit(
-    `group-ai:${chatId}:${userId}`,
-    1,
-    Math.max(cooldownSeconds, 10) * 1000,
-  );
-  const allowed = gate.allowed && used < dailyLimit;
+  // مقدار ۰ در پنل یعنی بدون محدودیت / بدون فاصله.
+  const gate = cooldownSeconds > 0
+    ? deps.limiter.hit(`group-ai:${chatId}:${userId}`, 1, cooldownSeconds * 1000)
+    : { allowed: true };
+  const allowed = gate.allowed && (dailyLimit <= 0 || used < dailyLimit);
   return { allowed, used, limit: dailyLimit };
 }
 
