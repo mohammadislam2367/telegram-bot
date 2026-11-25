@@ -20,7 +20,7 @@ import { statusLabel } from "../_shared/texts.ts";
 import type { TgUpdate, UserRow } from "../_shared/types.ts";
 import { answerCallback, createContext, type Ctx, editOrSend, send } from "./context.ts";
 import { handlePrivateCommand, parsePrivateCommand } from "./commands.ts";
-import { renderUserHome } from "./dashboard.ts";
+import { privateHome } from "./digi_panel.ts";
 import {
   handleAdminCallback,
   handleConfirmCallback,
@@ -90,17 +90,21 @@ export async function processUpdate(deps: RouterDeps, update: TgUpdate): Promise
   const { chat, from } = extracted;
   const timeZone = await deps.settings.get("timezone");
 
-  const rawUser = await callRpc<UserRow | UserRow[]>(deps.sb, "touch_user", {
-    p_telegram_id: from.id,
-    p_username: from.username ?? null,
-    p_first_name: from.first_name ?? null,
-    p_last_name: from.last_name ?? null,
-    p_language_code: from.language_code ?? null,
-    p_is_premium: from.is_premium === true,
-    p_is_bot: from.is_bot,
-    p_count_message: extracted.isMessage,
-    p_day: todayInZone(timeZone),
-  });
+  const rawUser = await callRpc<UserRow | UserRow[]>(
+    deps.sb,
+    "touch_user",
+    {
+      p_telegram_id: from.id,
+      p_username: from.username ?? null,
+      p_first_name: from.first_name ?? null,
+      p_last_name: from.last_name ?? null,
+      p_language_code: from.language_code ?? null,
+      p_is_premium: from.is_premium === true,
+      p_is_bot: from.is_bot,
+      p_count_message: extracted.isMessage,
+      p_day: todayInZone(timeZone),
+    },
+  );
   const user = Array.isArray(rawUser) ? rawUser[0] : rawUser;
 
   if (!user) {
@@ -205,6 +209,26 @@ export class HandledUpdate extends Error {
   }
 }
 
+/** کارت اصلی اسپیکسل در چت خصوصی. */
+async function sendPrivateHome(ctx: Ctx): Promise<void> {
+  const home = privateHome({
+    cfg: ctx.cfg,
+    sb: ctx.sb,
+    tg: ctx.tg,
+    settings: ctx.settings,
+    log: ctx.log,
+    groupAdmins: ctx.groupAdmins,
+  });
+  try {
+    await ctx.tg.sendMessage(ctx.chatId, home.text, {
+      preview: false,
+      markup: home.markup as never,
+    });
+  } catch (error) {
+    await ctx.log.warn("private home failed", { error: (error as Error).message });
+  }
+}
+
 async function handlePrivateMessage(ctx: Ctx): Promise<void> {
   const message = ctx.update.message!;
   const text = message.text ?? message.caption ?? "";
@@ -297,7 +321,7 @@ async function handlePrivateMessage(ctx: Ctx): Promise<void> {
     return;
   }
 
-  await renderUserHome(ctx);
+  await sendPrivateHome(ctx);
 }
 
 async function handleCallback(ctx: Ctx): Promise<void> {
@@ -334,8 +358,9 @@ async function handleCallback(ctx: Ctx): Promise<void> {
     const action = parts[1];
 
     if (action === "m" || action === "hl") {
-      const { handleUserCallback } = await import("./dashboard.ts");
-      if (await handleUserCallback(ctx, parts)) return;
+      await sendPrivateHome(ctx);
+      await answerCallback(ctx, "");
+      return;
     }
 
     if (["pr", "tg", "mm", "dl", "dly", "dln"].includes(action ?? "")) {
@@ -365,8 +390,8 @@ async function handleCallback(ctx: Ctx): Promise<void> {
       return;
     }
 
-    // دکمهٔ قدیمی/ناشناخته: به‌جای پیام خطا، منوی اصلی دوباره باز می‌شود.
-    await renderUserHome(ctx);
+    // دکمهٔ قدیمی/ناشناخته: کارت اصلی اسپیکسل دوباره باز می‌شود.
+    await sendPrivateHome(ctx);
     await answerCallback(ctx, "منوی اصلی باز شد.");
     return;
   }
