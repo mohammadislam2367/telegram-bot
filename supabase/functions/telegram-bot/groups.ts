@@ -218,9 +218,12 @@ async function renderGroup(ctx: Ctx, id: number): Promise<void> {
   if (!group) {
     await editOrSend(
       ctx,
-      "گروه پیدا نشد. اگر ربات تازه اضافه شده، یک پیام در گروه بفرستید.",
+      "گروه پیدا نشد. اگر ربات تازه اضافه شده، یک بار /start را در گروه بفرستید تا ثبت شود.",
       keyboard([
-        [{ text: "👮 گروه‌ها", callback_data: "a:gr" }],
+        [
+          { text: "👮 همهٔ گروه‌ها", callback_data: "a:gr", style: "primary" },
+          { text: "🏠 داشبورد", callback_data: "a:h", style: "success" },
+        ],
       ]),
     );
     return;
@@ -265,7 +268,6 @@ async function renderGroups(ctx: Ctx): Promise<void> {
     keyboard(rows),
   );
 }
-
 async function renderGroupLogs(ctx: Ctx, id: number): Promise<void> {
   const logs = await selectRows<ModerationLogRow>(
     ctx.sb,
@@ -315,8 +317,11 @@ export async function handleGroupsCallback(ctx: Ctx, parts: string[]): Promise<b
 
   if (parts[1] !== "g") return false;
   const id = Number(parts[2]);
-  if (!Number.isSafeInteger(id)) {
-    await answerCallback(ctx, "شناسه گروه نامعتبر است.", true);
+  // «👮 مدیریت گروه» ممکن است بدون شناسه بیاید؛ در این حالت فهرست گروه‌ها باز می‌شود.
+  if (!parts[2] || !Number.isSafeInteger(id)) {
+    if (!(await guardAdmin(ctx, "groups.read"))) return true;
+    await renderGroups(ctx);
+    await answerCallback(ctx, "فهرست گروه‌ها باز شد.");
     return true;
   }
 
