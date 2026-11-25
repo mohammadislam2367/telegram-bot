@@ -1,4 +1,3 @@
-
 /**
  * Anime Click Ultimate
  * Health check + secure Telegram webhook repair.
@@ -57,9 +56,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   try {
     cfg = loadConfig();
   } catch (error) {
-    const missing = error instanceof ConfigError
-      ? error.missing
-      : ["unknown"];
+    const missing = error instanceof ConfigError ? error.missing : ["unknown"];
 
     return jsonResponse({
       ok: false,
@@ -72,13 +69,17 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (repair) {
     const supplied = request.headers.get("x-setup-secret") ?? "";
 
-    if (!cfg.schedulerSecret ||
-        !safeEqual(supplied, cfg.schedulerSecret)) {
+    if (
+      !cfg.schedulerSecret ||
+      !safeEqual(supplied, cfg.schedulerSecret)
+    ) {
       return jsonResponse({ ok: false, error: "unauthorized" }, 401);
     }
 
-    if (!cfg.webhookSecret ||
-        !/^[A-Za-z0-9_-]{1,256}$/.test(cfg.webhookSecret)) {
+    if (
+      !cfg.webhookSecret ||
+      !/^[A-Za-z0-9_-]{1,256}$/.test(cfg.webhookSecret)
+    ) {
       return jsonResponse({
         ok: false,
         error: "invalid_webhook_secret_configuration",
@@ -87,8 +88,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     try {
       const tg = new TelegramApi(cfg.botToken);
-      const webhookUrl =
-        `${cfg.supabaseUrl}/functions/v1/telegram-bot`;
+      const webhookUrl = `${cfg.supabaseUrl}/functions/v1/telegram-bot`;
 
       const allowedUpdates = [
         "message",
@@ -125,8 +125,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       }
 
       const info = await tg.getWebhookInfo() as WebhookInfo;
-      const callbackAllowed =
-        info.allowed_updates?.includes("callback_query") ?? false;
+      const callbackAllowed = info.allowed_updates?.includes("callback_query") ?? false;
 
       return jsonResponse({
         ok: Boolean(info.url) && callbackAllowed,
@@ -193,8 +192,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       };
 
       const info = await tg.getWebhookInfo() as WebhookInfo;
-      const callbackAllowed =
-        info.allowed_updates?.includes("callback_query") ?? false;
+      const callbackAllowed = info.allowed_updates?.includes("callback_query") ?? false;
 
       checks.webhook = {
         ok: Boolean(info.url) && callbackAllowed,
