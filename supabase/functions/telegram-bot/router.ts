@@ -278,17 +278,8 @@ async function handlePrivateMessage(ctx: Ctx): Promise<void> {
     return;
   }
 
-  // دو حالت ربات: اگر ماژول AI و کلید فعال‌سازی هر دو روشن باشند، پاسخ هوشمند
-  // (با نشانگر تایپ) می‌آید؛ در غیر این صورت پاسخ فوری و حرفه‌ای داخلی، بدون فکر کردن.
-  const [aiFeature, aiOn] = await Promise.all([
-    ctx.settings.get("feature_ai"),
-    ctx.settings.get("ai_enabled"),
-  ]);
-  if (aiFeature && aiOn) {
-    await handleUserAiMessage(ctx, text);
-    return;
-  }
-
+  // پیش‌فرض دستورمحور است: هر متن آزاد به هوش مصنوعی نمی‌رود. چت هوشمند فقط
+  // با /ai یا دکمهٔ «چت هوشمند» (که session می‌سازد) روشن می‌شود.
   const timeZone = await ctx.settings.get("timezone");
   const quick = offlineAnswer(text, {
     timeZone,
