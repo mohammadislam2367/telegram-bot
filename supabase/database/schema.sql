@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgcrypto;
 
--- ─── shared trigger: updated_at ──────────────────────────────────────────────
+-- ─── shared trigger: updated_at ──────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -146,6 +146,8 @@ create table if not exists public.group_settings (
   antispam_enabled      boolean not null default true,
   block_forwards        boolean not null default false,
   delete_warn_messages  boolean not null default true,
+  verify_enabled        boolean not null default false,
+  strict_mode           boolean not null default false,
   flood_limit           integer not null default 6 check (flood_limit between 2 and 60),
   flood_window_seconds  integer not null default 20 check (flood_window_seconds between 5 and 600),
   warn_limit            integer not null default 3 check (warn_limit between 1 and 10),
@@ -156,6 +158,10 @@ create table if not exists public.group_settings (
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
+
+-- برای دیتابیس‌های موجود (جدول از قبل ساخته شده) — این دو ستون بعداً اضافه شدند
+alter table public.group_settings add column if not exists verify_enabled boolean not null default false;
+alter table public.group_settings add column if not exists strict_mode boolean not null default false;
 
 drop trigger if exists group_settings_set_updated_at on public.group_settings;
 create trigger group_settings_set_updated_at before update on public.group_settings
@@ -677,7 +683,7 @@ begin
     language_code   = coalesce(excluded.language_code, users.language_code),
     is_premium      = excluded.is_premium,
     last_seen_at    = now(),
-    message_count   = users.message_count + case when p_count_message then 1 else 0 end,
+    message_count    = users.message_count + case when p_count_message then 1 else 0 end,
     updated_at      = now()
   returning * into result;
 
