@@ -7,7 +7,7 @@
 #   ./scripts/apply-database.sh
 #
 # DATABASE_URL را از Supabase → Project Settings → Database → Connection string بگیرید.
-# این اسکریپت schema/policies/seed را اجرا می‌کند؛ cron.sql را بعد از deploy توابع
+# این اسکریپت schema/digi/policies/seed را اجرا می‌کند؛ cron.sql را بعد از deploy توابع
 # و ثبت SCHEDULER_SECRET در Vault به‌صورت جداگانه اجرا کنید.
 # =============================================================================
 set -euo pipefail
@@ -25,10 +25,10 @@ if ! command -v psql >/dev/null 2>&1; then
   exit 1
 fi
 
-for file in schema.sql policies.sql seed.sql; do
+for file in schema.sql digi.sql policies.sql seed.sql; do
   echo "→ applying $file"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$DB_DIR/$file"
 done
 
-echo "✓ schema, policies and seed applied"
+echo "✓ schema, digi, policies and seed applied"
 echo "→ next: deploy functions, then run supabase/database/cron.sql (see docs/DEPLOYMENT.md)"
