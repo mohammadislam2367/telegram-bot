@@ -25,6 +25,7 @@ import {
 } from "./quick.ts";
 import { handleToolboxCallback, handleToolboxMessage } from "./toolbox.ts";
 import { handleGroupExtra, handleGroupPanelCallback } from "./group_extra.ts";
+import { handleDigiText } from "./digi.ts";
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
@@ -218,6 +219,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (
         update.message &&
         await handleGroupExtra({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
+      if (
+        update.message &&
+        await handleDigiText({ ...extras, settings, groupAdmins }, update.message)
       ) return;
       if (
         update.message &&
