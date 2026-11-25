@@ -22,8 +22,6 @@ import {
   lockKey,
   lockLabel,
   normalize,
-  panelMarkup,
-  panelText,
   punish,
   saveSettings,
   say,
@@ -31,6 +29,7 @@ import {
   stripPunct,
   targetOf,
 } from "./digi_core.ts";
+import { mainMarkup, mainScreen } from "./digi_panel.ts";
 import { handleAdminCommand, isAdminText } from "./digi_admin.ts";
 
 export { renderWelcome } from "./digi_core.ts";
@@ -190,12 +189,7 @@ export async function handleDigiPlus(deps: DigiDeps, message: TgMessage): Promis
       await say(deps, chatId, "⚠️ تنظیمات گروه در دسترس نیست. بعداً تلاش کن.");
       return true;
     }
-    await say(
-      deps,
-      chatId,
-      panelText(settings),
-      panelMarkup(`https://t.me/${deps.cfg.botUsername}?start=admin`),
-    );
+    await say(deps, chatId, mainScreen(settings), mainMarkup(true));
     return true;
   }
 

@@ -17,6 +17,7 @@ import {
 import { renderUserHome as renderHome } from "./dashboard.ts";
 import { answerCallback, type Ctx, editOrSend, send } from "./context.ts";
 import { handleOwnerWarningCommand } from "./warning.ts";
+import { privateHome } from "./digi_panel.ts";
 
 export interface ParsedCommand {
   command: string;
@@ -42,7 +43,23 @@ export async function handlePrivateCommand(ctx: Ctx, parsed: ParsedCommand): Pro
           await renderAdminHome(ctx, false);
           return;
         }
-        await send(ctx, "⛔ شما مدیر مجاز ربات نیستید. منوی کاربر برای شما باز شد.");
+        await send(ctx, "⛔ شما مدیر مجاز ربات نیستید.");
+      }
+      // مدیران ربات کارت جدید اسپیکسل را می‌بینند؛ کاربران عادی منوی خودشان.
+      if (ctx.admin) {
+        const home = privateHome({
+          cfg: ctx.cfg,
+          sb: ctx.sb,
+          tg: ctx.tg,
+          settings: ctx.settings,
+          log: ctx.log,
+          groupAdmins: ctx.groupAdmins,
+        });
+        await ctx.tg.sendMessage(ctx.chatId, home.text, {
+          preview: false,
+          markup: home.markup as never,
+        });
+        return;
       }
       await renderUserHome(ctx);
       return;
