@@ -88,11 +88,11 @@ export async function handleGroupIntro(deps: IntroDeps, message: TgMessage): Pro
   // همهٔ دکمه‌ها همین‌جا در گروه کار می‌کنند؛ قوانین در خود گروه نمایش داده می‌شود.
   const markup = keyboard([
     [
-      { text: "🛡 پنل مدیریت گروه", callback_data: "gp:p:1", style: "success" },
-      { text: "📜 قوانین گروه", callback_data: "gp:rules", style: "primary" },
+      { text: "🛡 پنل مدیریت گروه", callback_data: "dg:m", style: "success" },
+      { text: "📜 قوانین گروه", callback_data: "dg:gr", style: "primary" },
     ],
     [
-      { text: "⚙️ تنظیمات گروه", callback_data: "gp:p:2", style: "primary" },
+      { text: "🧠 اتوماسیون", callback_data: "dg:a", style: "primary" },
       { text: "🤖 ورود به ربات", url: `https://t.me/${username}?start=group` },
     ],
   ]);

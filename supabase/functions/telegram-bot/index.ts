@@ -24,15 +24,14 @@ import {
   handleQuickMessage,
 } from "./quick.ts";
 import { handleToolboxCallback, handleToolboxMessage } from "./toolbox.ts";
-import { handleGroupExtra, handleGroupPanelCallback } from "./group_extra.ts";
-import { handleDigiText } from "./digi.ts";
+import { handleGroupExtra } from "./group_extra.ts";
 import { handleDigiPlus } from "./digi_plus.ts";
 import { handleDigiPrivate } from "./digi_private.ts";
 import { handleDigiPanelCallback, handleDigiPanelMessage } from "./digi_panel.ts";
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
-const BUILD = "digi-2026-11-25";
+const BUILD = "digi-2026-11-25b";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
@@ -211,10 +210,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
         update.callback_query &&
         await handleDigiPanelCallback({ ...extras, settings, groupAdmins }, update.callback_query)
       ) return;
-      if (
-        update.callback_query &&
-        await handleGroupPanelCallback({ ...extras, settings, groupAdmins }, update.callback_query)
-      ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
       // پنل و صفحهٔ خانهٔ دیجی (شامل «/start» و «پنل»).
@@ -227,10 +222,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (
         update.message &&
         await handleDigiPlus({ ...extras, settings, groupAdmins }, update.message)
-      ) return;
-      if (
-        update.message &&
-        await handleDigiText({ ...extras, settings, groupAdmins }, update.message)
       ) return;
       // در چت خصوصی هم کارت‌های دیجی («راهنما»، «ایدی») جای پاسخ‌های قدیمی.
       if (
