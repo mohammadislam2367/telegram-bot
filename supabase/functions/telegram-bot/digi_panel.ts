@@ -12,6 +12,7 @@
  *   dg:st           آمار گروه
  *   dg:u            سرگرمی
  *   dg:h / dg:gr    راهنما / قوانین
+ *   dg:v:<user>     تأیید هویت عضو تازه
  */
 import { countRows, deleteRows, selectRows } from "../_shared/db.ts";
 import { keyboard, urlButton } from "../_shared/keyboards.ts";
@@ -58,7 +59,9 @@ export function mainScreen(settings: GroupSettingsRow): string {
   const active = Object.values(locks).filter(Boolean).length;
   return digiCard("🛡 <b>پنل مدیریت اسپیکسل</b>", [
     `١. قفل‌ها: ${on(active > 0)} ${faNum(active)} فعال از ${faNum(LOCK_DEFS.length)}`,
-    `٢. اتوماسیون: ضدلینک ${on(settings.antilink_enabled)} · ضداسپم ${on(settings.antispam_enabled)}`,
+    `٢. اتوماسیون: ضدلینک ${on(settings.antilink_enabled)} · ضداسپم ${
+      on(settings.antispam_enabled)
+    }`,
     `٣. خوشامد ${on(settings.welcome_enabled)} · ضدفوروارد ${on(settings.block_forwards)}`,
     `٤. تأیید ${on(settings.verify_enabled)} · سخت‌گیرانه ${on(settings.strict_mode)}`,
     `٥. مجازات: ${faNum(settings.warn_limit)} اخطار → ${faAction(settings.warn_action)}`,
@@ -112,14 +115,18 @@ export function locksText(settings: GroupSettingsRow, page: number): {
   const slice = LOCK_DEFS.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
   const rows: Btn[][] = [];
   for (let i = 0; i < slice.length; i += 2) {
-    rows.push(slice.slice(i, i + 2).map((def) => ({
-      text: `${locks[def.key] ? "✅" : "🔒"} ${def.emoji} ${def.label}`,
-      callback_data: `dg:t:${def.key}:${safePage}`,
-      style: locks[def.key] ? ("success" as const) : ("primary" as const),
-    })));
+    rows.push(
+      slice.slice(i, i + 2).map((def) => ({
+        text: `${locks[def.key] ? "✅" : "🔒"} ${def.emoji} ${def.label}`,
+        callback_data: `dg:t:${def.key}:${safePage}`,
+        style: locks[def.key] ? ("success" as const) : ("primary" as const),
+      })),
+    );
   }
   const nav: Btn[] = [];
-  if (safePage > 0) nav.push({ text: "◀️", callback_data: `dg:l:${safePage - 1}`, style: "primary" });
+  if (safePage > 0) {
+    nav.push({ text: "◀️", callback_data: `dg:l:${safePage - 1}`, style: "primary" });
+  }
   nav.push({
     text: `صفحهٔ ${faNum(safePage + 1)}/${faNum(pages)}`,
     callback_data: `dg:l:${safePage}`,
@@ -136,7 +143,9 @@ export function locksText(settings: GroupSettingsRow, page: number): {
   rows.push(backRow());
 
   const text = digiCard("🔐 <b>قفل‌های گروه</b>", [
-    `فعال: <b>${faNum(Object.values(locks).filter(Boolean).length)}</b> از ${faNum(LOCK_DEFS.length)}`,
+    `فعال: <b>${faNum(Object.values(locks).filter(Boolean).length)}</b> از ${
+      faNum(LOCK_DEFS.length)
+    }`,
     "روی هر دکمه بزن تا همان قفل روشن/خاموش شود.",
     "",
     "دستور متنی: <code>قفل لینک</code> · <code>بازکردن لینک</code> · <code>قفل ها</code>",
@@ -260,11 +269,13 @@ async function filterScreen(
   }
   const rows: Btn[][] = [];
   for (let i = 0; i < words.length; i += 2) {
-    rows.push(words.slice(i, i + 2).map((row) => ({
-      text: `🗑 ${row.word.slice(0, 14)}`,
-      callback_data: `dg:fr:${row.id}`,
-      style: "danger" as const,
-    })));
+    rows.push(
+      words.slice(i, i + 2).map((row) => ({
+        text: `🗑 ${row.word.slice(0, 14)}`,
+        callback_data: `dg:fr:${row.id}`,
+        style: "danger" as const,
+      })),
+    );
   }
   rows.push([
     { text: "🔄 به‌روزرسانی", callback_data: "dg:f", style: "primary" },
@@ -346,6 +357,38 @@ function funMarkup(): unknown {
   });
   rows.push(backRow());
   return keyboard(rows);
+}
+
+/** کارت خانه در چت خصوصی — تنها ورودی پنل. */
+export function privateHome(deps: DigiDeps): { text: string; markup: unknown } {
+  return {
+    text: digiCard("🤖 <b>اسپیکسل</b>", [
+      "دستیار و مدیر گروه، به سبک دیجی‌انتی.",
+      "",
+      "• <code>/ai سؤالت</code> — چت هوشمند",
+      "• <code>راهنما</code> — همهٔ دستورها",
+      "• در گروه بنویس <code>پنل</code> تا پنل مدیریت باز شود",
+      "",
+      "دکمه‌های زیر را بزن.",
+    ]),
+    markup: keyboard([
+      [
+        { text: "🧰 ابزارها", callback_data: "u:tb", style: "primary" },
+        { text: "👤 بیو من", callback_data: "u:bi", style: "success" },
+      ],
+      [
+        { text: "ℹ️ درباره", callback_data: "dg:about", style: "primary" },
+        { text: "🤖 هوش مصنوعی", callback_data: "dg:ai", style: "success" },
+      ],
+      [
+        urlButton(
+          "➕ افزودن به گروه",
+          `https://t.me/${deps.cfg.botUsername}?startgroup=true`,
+          "success",
+        ),
+      ],
+    ]),
+  };
 }
 
 /** هندلر همهٔ دکمه‌های `dg:` */
@@ -445,6 +488,34 @@ export async function handleDigiPanelCallback(
 
   if (action === "u") {
     await show(digiCard("🎉 <b>سرگرمی</b>", ["یکی را انتخاب کن:"]), funMarkup());
+    return true;
+  }
+
+  // ✅ تأیید هویت عضو تازه (تغییر وضعیت محدودیت)
+  if (action === "v") {
+    const userId = Number(parts[2]);
+    if (!Number.isSafeInteger(userId) || userId !== cq.from.id) {
+      await reply("این دکمه برای شما نیست.", true);
+      return true;
+    }
+    const groupId = chat?.id;
+    if (!groupId || !messageId) {
+      await reply("این پیام قدیمی شده است.", true);
+      return true;
+    }
+    try {
+      await deps.tg.unrestrictChatMember(groupId, userId);
+      await deps.tg.editMessageText(
+        groupId,
+        messageId,
+        digiCard("✅ <b>تأیید شد</b>", [
+          `<a href="tg://user?id=${userId}">${escapeHtml(cq.from.first_name)}</a> عزیز، خوش آمدی!`,
+        ]),
+        { preview: false },
+      );
+    } catch {
+      await reply("تأیید انجام نشد. دوباره تلاش کن.", true);
+    }
     return true;
   }
 
@@ -660,38 +731,11 @@ export async function handleDigiPanelMessage(
   if (!wantsPanel) return false;
 
   if (isPrivate) {
-    await deps.tg.sendMessage(
-      chat.id,
-      digiCard("🤖 <b>اسپیکسل</b>", [
-        "دستیار و مدیر گروه، به سبک دیجی‌انتی.",
-        "",
-        "• <code>/ai سؤالت</code> — چت هوشمند",
-        "• <code>راهنما</code> — همهٔ دستورها",
-        "• در گروه بنویس <code>پنل</code> تا پنل مدیریت باز شود",
-        "",
-        "دکمه‌های زیر را بزن.",
-      ]),
-      {
-        preview: false,
-        markup: keyboard([
-          [
-            { text: "🧰 ابزارها", callback_data: "u:tb", style: "primary" },
-            { text: "👤 بیو من", callback_data: "u:bi", style: "success" },
-          ],
-          [
-            { text: "ℹ️ درباره", callback_data: "dg:about", style: "primary" },
-            { text: "🤖 هوش مصنوعی", callback_data: "dg:ai", style: "success" },
-          ],
-          [
-            urlButton(
-              "➕ افزودن به گروه",
-              `https://t.me/${deps.cfg.botUsername}?startgroup=true`,
-              "success",
-            ),
-          ],
-        ]) as never,
-      },
-    );
+    const home = privateHome(deps);
+    await deps.tg.sendMessage(chat.id, home.text, {
+      preview: false,
+      markup: home.markup as never,
+    });
     return true;
   }
 
