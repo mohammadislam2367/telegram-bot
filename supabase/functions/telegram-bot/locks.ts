@@ -1,11 +1,10 @@
 /**
- * 🔐 قفل‌های تفکیکی گروه — دیجی‌انتی‌وار.
+ * 🔐 قفل‌های تفکیکی گروه — مجموعهٔ کامل دیجی‌انتی (۳۷ قفل).
  *
- * دو لایه دارد:
- *  ۱) قفل‌های مجوزی: با setChatPermissions روی خود گروه اعمال می‌شوند
- *     (پیام، عکس، ویدیو، فایل، ویس، آهنگ، استیکر/گیف، نظرسنجی، پیش‌نمایش لینک).
- *  ۲) قفل‌های محتوایی: ربات پیام را می‌خواند و اگر با قفل بخورد حذف/جریمه می‌کند
- *     (لینک، یوزرنیم، هشتگ، فوروارد، فحاشی، پیام طولانی، انگلیسی، مخاطب، لوکیشن، ربات).
+ * دو لایه:
+ *  ۱) قفل‌های مجوزی: با setChatPermissions روی خود گروه اعمال می‌شوند.
+ *  ۲) قفل‌های محتوایی: ربات پیام/موجودیت‌ها را می‌خواند و در صورت تطابق
+ *     پیام را حذف و طبق تنظیمات جریمه می‌کند.
  *
  * همه‌چیز خالص و بدون شبکه است تا قابل تست باشد.
  */
@@ -20,27 +19,45 @@ export interface LockDef {
   kind: LockKind;
 }
 
-/** ترتیب همین آرایه، ترتیب دکمه‌های پنل است. */
+/** ترتیب همین آرایه، ترتیب نمایش در پنل است (مثل فهرست دیجی). */
 export const LOCK_DEFS: readonly LockDef[] = [
   { key: "all", label: "همگانی", emoji: "🔇", kind: "permission" },
+  { key: "tabchi", label: "تبچی", emoji: "📢", kind: "content" },
   { key: "link", label: "لینک", emoji: "🔗", kind: "content" },
+  { key: "hyperlink", label: "هایپر", emoji: "🔵", kind: "content" },
   { key: "photo", label: "عکس", emoji: "🖼", kind: "permission" },
+  { key: "slash", label: "اسلش", emoji: "➗", kind: "content" },
+  { key: "username", label: "یوزرنیم", emoji: "📣", kind: "content" },
+  { key: "sticker", label: "استیکر", emoji: "🎭", kind: "permission" },
   { key: "video", label: "ویدیو", emoji: "🎬", kind: "permission" },
-  { key: "file", label: "فایل", emoji: "📎", kind: "permission" },
-  { key: "sticker", label: "استیکر/گیف", emoji: "🎭", kind: "permission" },
   { key: "voice", label: "ویس", emoji: "🎙", kind: "permission" },
-  { key: "music", label: "آهنگ", emoji: "🎵", kind: "permission" },
-  { key: "poll", label: "نظرسنجی", emoji: "📊", kind: "permission" },
-  { key: "preview", label: "پیش‌نمایش لینک", emoji: "👁", kind: "permission" },
-  { key: "username", label: "یوزرنیم/منشن", emoji: "📣", kind: "content" },
+  { key: "music", label: "موزیک", emoji: "🎵", kind: "permission" },
+  { key: "forward", label: "فروارد", emoji: "📤", kind: "content" },
+  { key: "gif", label: "گیف", emoji: "🌀", kind: "content" },
+  { key: "bot", label: "ربات", emoji: "🤖", kind: "content" },
+  { key: "file", label: "فایل", emoji: "📎", kind: "permission" },
   { key: "hashtag", label: "هشتگ", emoji: "#️⃣", kind: "content" },
-  { key: "forward", label: "فوروارد", emoji: "📤", kind: "content" },
-  { key: "curse", label: "فحاشی", emoji: "🤬", kind: "content" },
-  { key: "long", label: "پیام طولانی", emoji: "📜", kind: "content" },
-  { key: "english", label: "انگلیسی", emoji: "🔤", kind: "content" },
-  { key: "contact", label: "مخاطب", emoji: "👤", kind: "content" },
+  { key: "emoji", label: "ایموجی", emoji: "😀", kind: "content" },
+  { key: "system", label: "پیام سیستمی", emoji: "⚙️", kind: "content" },
+  { key: "edit", label: "ویرایش", emoji: "✏️", kind: "content" },
+  { key: "number", label: "شماره", emoji: "🔢", kind: "content" },
+  { key: "tg_game", label: "بازی تلگرامی", emoji: "🎮", kind: "content" },
   { key: "location", label: "لوکیشن", emoji: "📍", kind: "content" },
-  { key: "bot", label: "پیام ربات", emoji: "🤖", kind: "content" },
+  { key: "video_note", label: "ویدیو مسیج", emoji: "⭕", kind: "content" },
+  { key: "code", label: "کد متن", emoji: "💻", kind: "content" },
+  { key: "english", label: "انگلیسی", emoji: "🔤", kind: "content" },
+  { key: "mention", label: "منشن", emoji: "👥", kind: "content" },
+  { key: "persian", label: "فارسی", emoji: "🅰️", kind: "content" },
+  { key: "bold", label: "بولد", emoji: "🅱️", kind: "content" },
+  { key: "italic", label: "ایتالیک", emoji: "ℹ️", kind: "content" },
+  { key: "glass_button", label: "دکمه شیشه‌ای", emoji: "🔘", kind: "content" },
+  { key: "text", label: "متن", emoji: "📝", kind: "content" },
+  { key: "reply", label: "ریپلی", emoji: "↩️", kind: "content" },
+  { key: "long", label: "پیام طولانی", emoji: "📜", kind: "content" },
+  { key: "curse", label: "فحاشی", emoji: "🤬", kind: "content" },
+  { key: "poll", label: "نظرسنجی", emoji: "📊", kind: "permission" },
+  { key: "app", label: "اپلیکیشن", emoji: "📱", kind: "content" },
+  { key: "preview", label: "پیش‌نمایش لینک", emoji: "👁", kind: "permission" },
 ];
 
 export const LOCK_LABELS: Record<string, string> = Object.fromEntries(
@@ -93,8 +110,9 @@ export function buildPermissions(locks: Record<string, boolean>): ChatPermission
   if (locks.photo) permissions.can_send_photos = false;
   if (locks.video) permissions.can_send_videos = false;
   if (locks.file) permissions.can_send_documents = false;
-  if (locks.sticker) permissions.can_send_other_messages = false;
+  if (locks.sticker || locks.gif) permissions.can_send_other_messages = false;
   if (locks.voice) permissions.can_send_voice_notes = false;
+  if (locks.video_note) permissions.can_send_video_notes = false;
   if (locks.music) permissions.can_send_audios = false;
   if (locks.poll) permissions.can_send_polls = false;
   if (locks.preview) permissions.can_add_web_page_previews = false;
@@ -132,7 +150,7 @@ export function normalizePersian(value: string): string {
 }
 
 /** ریشه‌های رایج فحاشی فارسی؛ فقط برای تشخیص، نه نمایش. */
-const PROFANITY_ROOTS: readonly string[] = [
+export const PROFANITY_ROOTS: readonly string[] = [
   "کیر",
   "کوس",
   "کسکش",
@@ -166,6 +184,10 @@ const LINK_RE = /(https?:\/\/|www\.|t\.me\/|telegram\.me\/|tg:\/\/)/i;
 const MENTION_RE = /(^|\s)@[A-Za-z][A-Za-z0-9_]{3,31}/;
 const HASHTAG_RE = /(^|\s)#[\p{L}\p{N}_]{2,}/u;
 const ENGLISH_RE = /^[\s\p{P}\p{N}A-Za-z]+$/u;
+const PERSIAN_RE = /[\u0600-\u06FF]/;
+const PHONE_RE = /(?:\+98|0098|0)?9\d{9}/;
+const EMOJI_RE = /\p{Extended_Pictographic}/u;
+const TABCHI_RE = /(تبلیغ|تبچی|کانال ما|جوین|عضو شوید|تبادل)/;
 
 const LONG_MESSAGE_CHARS = 700;
 
@@ -175,6 +197,12 @@ function entitiesOf(message: TgMessage): { type: string }[] {
 
 function messageText(message: TgMessage): string {
   return message.text ?? message.caption ?? "";
+}
+
+function hasMarkup(message: TgMessage): boolean {
+  const markup = (message as unknown as { reply_markup?: { inline_keyboard?: unknown[] } })
+    .reply_markup;
+  return Array.isArray(markup?.inline_keyboard) && markup.inline_keyboard.length > 0;
 }
 
 /**
@@ -197,30 +225,26 @@ export function detectContentLock(
     return { key, label: LOCK_LABELS[key] ?? key };
   };
 
+  if (locks.tabchi && TABCHI_RE.test(normalized)) return hit("tabchi");
+
   if (locks.link) {
     const hasLink = LINK_RE.test(text) || entityTypes.has("url") || entityTypes.has("text_link");
     if (hasLink) return hit("link");
   }
 
+  if (locks.hyperlink && entityTypes.has("text_link")) return hit("hyperlink");
   if (locks.photo && message.photo) return hit("photo");
-  if (locks.video && (message.video || message.video_note)) return hit("video");
-  if (locks.file && message.document) return hit("file");
-  if (locks.sticker && (message.sticker || message.animation || message.dice || message.game)) {
-    return hit("sticker");
-  }
-  if (locks.voice && message.voice) return hit("voice");
-  if (locks.music && message.audio) return hit("music");
-  if (locks.poll && message.poll) return hit("poll");
+  if (locks.slash && /(^|\s)\//.test(text)) return hit("slash");
 
   if (locks.username) {
-    const hasMention = entityTypes.has("mention") || MENTION_RE.test(text);
-    if (hasMention) return hit("username");
+    const hasUsername = entityTypes.has("mention") || MENTION_RE.test(text);
+    if (hasUsername) return hit("username");
   }
 
-  if (locks.hashtag) {
-    const hasHashtag = entityTypes.has("hashtag") || HASHTAG_RE.test(text);
-    if (hasHashtag) return hit("hashtag");
-  }
+  if (locks.sticker && message.sticker) return hit("sticker");
+  if (locks.video && message.video) return hit("video");
+  if (locks.voice && message.voice) return hit("voice");
+  if (locks.music && message.audio) return hit("music");
 
   if (
     locks.forward && (message.forward_origin || message.forward_date) &&
@@ -229,20 +253,53 @@ export function detectContentLock(
     return hit("forward");
   }
 
+  if (locks.gif && message.animation) return hit("gif");
+  if (locks.bot && (message.via_bot || message.from?.is_bot)) return hit("bot");
+  if (locks.file && message.document) return hit("file");
+
+  if (locks.hashtag) {
+    const hasHashtag = entityTypes.has("hashtag") || HASHTAG_RE.test(text);
+    if (hasHashtag) return hit("hashtag");
+  }
+
+  if (locks.emoji && (EMOJI_RE.test(text) || entityTypes.has("custom_emoji"))) return hit("emoji");
+  const pinned = (message as unknown as { pinned_message?: unknown }).pinned_message;
+  if (locks.system && (message.new_chat_members || message.left_chat_member || pinned)) {
+    return hit("system");
+  }
+
+  if (locks.edit && (message as unknown as { edit_date?: number }).edit_date) return hit("edit");
+
+  if (locks.number && PHONE_RE.test(normalized.replace(/[\s-]/g, ""))) return hit("number");
+  if (locks.tg_game && (message.game || message.dice)) return hit("tg_game");
+  if (locks.location && (message.location || message.venue)) return hit("location");
+  if (locks.video_note && message.video_note) return hit("video_note");
+
+  if (locks.code && (entityTypes.has("code") || entityTypes.has("pre"))) return hit("code");
+
+  if (locks.english && text.length >= 4 && ENGLISH_RE.test(text)) return hit("english");
+  if (locks.mention && entityTypes.has("text_mention")) return hit("mention");
+  if (locks.persian && PERSIAN_RE.test(text)) return hit("persian");
+  if (locks.bold && entityTypes.has("bold")) return hit("bold");
+  if (locks.italic && entityTypes.has("italic")) return hit("italic");
+  if (locks.glass_button && hasMarkup(message)) return hit("glass_button");
+  if (locks.reply && message.reply_to_message) return hit("reply");
+  if (locks.long && text.length > LONG_MESSAGE_CHARS) return hit("long");
+
   if (locks.curse) {
     const found = PROFANITY_ROOTS.some((root) => normalized.includes(normalizePersian(root)));
     if (found) return hit("curse");
   }
 
-  if (locks.long && text.length > LONG_MESSAGE_CHARS) return hit("long");
-
-  if (locks.english && text.length >= 4 && ENGLISH_RE.test(text)) {
-    return hit("english");
+  if (locks.poll && message.poll) return hit("poll");
+  if (
+    locks.app &&
+    (entityTypes.has("web_app_data") ||
+      (message as unknown as { web_app_data?: unknown }).web_app_data)
+  ) {
+    return hit("app");
   }
-
-  if (locks.contact && message.contact) return hit("contact");
-  if (locks.location && (message.location || message.venue)) return hit("location");
-  if (locks.bot && message.via_bot) return hit("bot");
+  if (locks.text && text.length > 0) return hit("text");
 
   return null;
 }
