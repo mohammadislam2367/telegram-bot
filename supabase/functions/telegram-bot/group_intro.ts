@@ -55,10 +55,11 @@ function introText(readsAll: boolean | null): string {
     "🛡 ضد لینک و ضد اسپم  •  📤 ضد فوروارد",
     "⚠️ اخطار خودکار ← سکوت / اخراج / بن",
     "🔒 قفل گروه  •  📌 سنجاق  •  🧹 پاک‌سازی",
+    "🔍 تأیید هویت اعضای تازه  •  📜 قوانین گروه",
     "👋 خوش‌آمدگویی ویژهٔ اعضای تازه",
     "⚡ جواب فوری کلمات: بیو، ساعت، تاریخ، آیدی، تاس، جمله، پیشنهاد انیمه",
     "",
-    "<b>دستورها:</b> /panel · /rules · /id · /report",
+    "<b>دستورها:</b> /panel · /rules · /verify · /id · /report",
   ];
   if (readsAll === false) {
     lines.push(
@@ -84,14 +85,15 @@ export async function handleGroupIntro(deps: IntroDeps, message: TgMessage): Pro
 
   const username = deps.cfg.botUsername;
   const readsAll = await readsAllGroupMessages(deps);
+  // همهٔ دکمه‌ها همین‌جا در گروه کار می‌کنند؛ قوانین در خود گروه نمایش داده می‌شود.
   const markup = keyboard([
     [
       { text: "🛡 پنل مدیریت گروه", callback_data: "gp:p:1", style: "success" },
-      { text: "🤖 ورود به ربات", url: `https://t.me/${username}?start=group` },
+      { text: "📜 قوانین گروه", callback_data: "gp:rules", style: "primary" },
     ],
     [
-      { text: "📜 قوانین گروه", url: `https://t.me/${username}?start=rules` },
-      { text: "⚙️ تنظیمات گروه", url: `https://t.me/${username}?start=admin` },
+      { text: "⚙️ تنظیمات گروه", callback_data: "gp:p:2", style: "primary" },
+      { text: "🤖 ورود به ربات", url: `https://t.me/${username}?start=group` },
     ],
   ]);
 
