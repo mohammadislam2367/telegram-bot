@@ -9,7 +9,12 @@ import type { TelegramApi } from "../_shared/telegram.ts";
 import type { SettingsStore } from "../_shared/settings.ts";
 import type { Logger } from "../_shared/logger.ts";
 import type { GroupAdminChecker } from "../_shared/auth.ts";
-import type { GroupSettingsRow, TgCallbackQuery, TgInlineKeyboardMarkup, TgMessage } from "../_shared/types.ts";
+import type {
+  GroupSettingsRow,
+  TgCallbackQuery,
+  TgInlineKeyboardMarkup,
+  TgMessage,
+} from "../_shared/types.ts";
 import { countRows, insertRow, selectOne, updateRows } from "../_shared/db.ts";
 import { backButton, keyboard } from "../_shared/keyboards.ts";
 import { divider, faNum, sectionTitle } from "../_shared/texts.ts";
@@ -24,7 +29,7 @@ export interface GroupExtraDeps {
   groupAdmins: GroupAdminChecker;
 }
 
-const COMMANDS = ["lock", "unlock", "pin", "unpin", "panel"] as const;
+const COMMANDS = ["lock", "unlock", "pin", "unpin", "panel", "verify"] as const;
 
 const ALLOW_ALL = {
   can_send_messages: true,
@@ -68,6 +73,19 @@ const WARN_ACTION_LABELS: Record<string, string> = {
   kick: "اخراج",
   ban: "بن",
 };
+
+/** قفل «تأیید هویت» هر گروه جدا ذخیره می‌شود (بدون تغییر ساختار جدول). */
+function verifyKey(chatId: number): string {
+  return `group_verify_${chatId}`;
+}
+
+async function verifyEnabled(deps: GroupExtraDeps, chatId: number): Promise<boolean> {
+  try {
+    return (await deps.settings.all())[verifyKey(chatId)] === true;
+  } catch {
+    return false;
+  }
+}
 
 function permsKey(chatId: number): string {
   return `group_saved_perms_${chatId}`;
@@ -156,6 +174,7 @@ async function panelMarkup(
 ): Promise<TgInlineKeyboardMarkup> {
   const timeZone = await deps.settings.get("timezone").catch(() => "Asia/Tehran");
   const privateUrl = `https://t.me/${deps.cfg.botUsername}?start=admin`;
+  const verifyOn = await verifyEnabled(deps, settings.group_id);
 
   if (page === 2) {
     return keyboard([
@@ -166,18 +185,37 @@ async function panelMarkup(
       }],
       [
         { text: `🧹 پاک‌سازی گروه`, callback_data: "gp:purge", style: "primary" },
-        { text: `🔇 مدت سکوت: ${faNum(settings.mute_duration_minutes)}د`, callback_data: "gp:show:mute", style: "primary" },
+        {
+          text: `🔇 مدت سکوت: ${faNum(settings.mute_duration_minutes)}د`,
+          callback_data: "gp:show:mute",
+          style: "primary",
+        },
       ],
       [
-        { text: `🌊 بازه اسپم: ${faNum(settings.flood_window_seconds)}ث`, callback_data: "gp:show:flood", style: "primary" },
-        { text: `⚠️ حد اخطار: ${faNum(settings.warn_limit)}`, callback_data: "gp:show:warn", style: "primary" },
+        {
+          text: `🌊 بازه اسپم: ${faNum(settings.flood_window_seconds)}ث`,
+          callback_data: "gp:show:flood",
+          style: "primary",
+        },
+        {
+          text: `⚠️ حد اخطار: ${faNum(settings.warn_limit)}`,
+          callback_data: "gp:show:warn",
+          style: "primary",
+        },
       ],
       [
         { text: "📝 متن خوش‌آمد", callback_data: "gp:show:welcome_text", style: "primary" },
-        { text: "📜 قوانین گروه", callback_data: "gp:show:rules_text", style: "primary" },
+        { text: "📜 قوانین گروه", callback_data: "gp:rules", style: "primary" },
       ],
       [
+        {
+          text: `🔍 تأیید هویت: ${verifyOn ? "🟢" : "🔴"}`,
+          callback_data: "gp:vc",
+          style: verifyOn ? "success" : "primary",
+        },
         { text: "📊 گزارشات", callback_data: "gp:stats", style: "primary" },
+      ],
+      [
         { text: "⚙️ تنظیمات کامل", url: privateUrl },
       ],
       [
@@ -236,8 +274,7 @@ async function panelText(
     // اطلاعات گروه اختیاری است
   }
 
-  const on = (field: keyof GroupSettingsRow) =>
-    settings[field] === true ? "فعال 🟢" : "غیرفعال 🔴";
+  const on = (field: keyof GroupSettingsRow) => settings[field] === true ? "فعال 🟢" : "غیرفعال 🔴";
 
   return [
     sectionTitle(`🛡 پنل مدیریت «${truncate(title, 40)}»`),
@@ -336,6 +373,19 @@ export async function handleGroupExtra(
     return true;
   }
 
+  if (command === "verify") {
+    const current = await verifyEnabled(deps, chatId);
+    await deps.settings.set(verifyKey(chatId), !current);
+    await reply(
+      deps,
+      chatId,
+      !current
+        ? "🔍 تأیید هویت روشن شد.\nاعضای تازه تا زدن دکمهٔ «✅ تأیید هویت» نمی‌توانند پیام بفرستند."
+        : "🔍 تأیید هویت خاموش شد. اعضای تازه آزادانه پیام می‌فرستند.",
+    );
+    return true;
+  }
+
   if (command === "lock") {
     try {
       await applyLock(deps, chatId);
@@ -406,25 +456,114 @@ export async function handleGroupPanelCallback(
     await answer(deps, cq, "این پنل قدیمی شده است.");
     return true;
   }
-  if (!(await isGroupAdmin(deps, chatId, cq.from.id))) {
-    await answer(deps, cq, "⛔ این پنل فقط برای مدیران گروه است.");
-    return true;
-  }
 
   const parts = data.split(":");
   const action = parts[1] ?? "";
   const messageId = cq.message?.message_id;
 
+  // قوانین گروه برای همهٔ اعضا، همان‌جا در گروه نمایش داده می‌شود.
+  if (action === "rules") {
+    const settings = await loadGroupSettings(deps, chatId);
+    const body = (settings.rules_text ?? "").trim() ||
+      "قوانینی ثبت نشده است؛ مدیران می‌توانند از پنل گروه آن را تنظیم کنند.";
+    try {
+      await deps.tg.sendMessage(chatId, `<b>📜 قوانین گروه</b>\n\n${escapeHtml(body)}`, {
+        preview: false,
+        markup: keyboard([[
+          { text: "🛡 پنل گروه", callback_data: "gp:p:1", style: "success" },
+          { text: "❌ بستن", callback_data: "gp:close", style: "danger" },
+        ]]),
+      });
+      await answer(deps, cq, "قوانین گروه فرستاده شد.");
+    } catch (error) {
+      await deps.log.warn("group rules failed", {
+        chatId,
+        error: (error as Error).message,
+      });
+      await answer(deps, cq, "ارسال قوانین انجام نشد.");
+    }
+    return true;
+  }
+
+  // دکمهٔ «تأیید هویت» — هر عضو فقط هویت خودش را تأیید می‌کند.
+  if (action === "v") {
+    const targetId = Number(parts[2]);
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      await answer(deps, cq, "این دکمه معتبر نیست.");
+      return true;
+    }
+    if (targetId !== cq.from.id && !(await isGroupAdmin(deps, chatId, cq.from.id))) {
+      await answer(deps, cq, "⛔ فقط همان عضو می‌تواند هویت خودش را تأیید کند.");
+      return true;
+    }
+    try {
+      await deps.tg.call<boolean>("restrictChatMember", {
+        chat_id: chatId,
+        user_id: targetId,
+        permissions: ALLOW_ALL,
+      });
+      if (messageId) {
+        await deps.tg.editMessageText(
+          chatId,
+          messageId,
+          "✅ هویت تأیید شد. خوش آمدی! حالا می‌توانی پیام بفرستی.",
+        );
+      }
+      await answer(deps, cq, "✅ تأیید شد.");
+    } catch (error) {
+      await deps.log.warn("verify approve failed", {
+        chatId,
+        error: (error as Error).message,
+      });
+      await answer(deps, cq, failureHint("تأیید هویت"));
+    }
+    return true;
+  }
+
+  // بستن پنل/کارت برای همه آزاد است تا دکمهٔ بازگشت همیشه جواب بدهد.
   if (action === "close") {
     if (messageId) {
       try {
-        await deps.tg.deleteMessage(chatId, messageId);
+        await deps.tg.editMessageText(
+          chatId,
+          messageId,
+          "✅ پنل بسته شد. هر زمان خواستی با /panel بازش کن.",
+          {
+            markup: keyboard([[{
+              text: "🛡 باز کردن پنل",
+              callback_data: "gp:p:1",
+              style: "success",
+            }]]),
+          },
+        );
+        await answer(deps, cq, "پنل بسته شد.");
+        return true;
       } catch {
-        // اگر حذف نشد، پنل را به متن ساده تبدیل می‌کنیم
-        await renderPanel(deps, chatId, 1, messageId);
+        try {
+          await deps.tg.deleteMessage(chatId, messageId);
+        } catch {
+          // اگر ویرایش و حذف هر دو نشد، فقط پاسخ دکمه کافی است
+        }
       }
     }
     await answer(deps, cq, "پنل بسته شد.");
+    return true;
+  }
+
+  if (!(await isGroupAdmin(deps, chatId, cq.from.id))) {
+    await answer(deps, cq, "⛔ این پنل فقط برای مدیران گروه است.");
+    return true;
+  }
+
+  if (action === "vc") {
+    const current = await verifyEnabled(deps, chatId);
+    await deps.settings.set(verifyKey(chatId), !current);
+    await renderPanel(deps, chatId, 2, messageId);
+    await answer(
+      deps,
+      cq,
+      `تأیید هویت: ${!current ? "روشن شد" : "خاموش شد"}`,
+    );
     return true;
   }
 
@@ -528,13 +667,16 @@ export async function handleGroupPanelCallback(
     const field = parts[2] ?? "";
     const settings = await loadGroupSettings(deps, chatId);
     const lines: Record<string, string> = {
-      flood: `🌊 حد اسپم: ${faNum(settings.flood_limit)} پیام در ${faNum(settings.flood_window_seconds)} ثانیه`,
+      flood: `🌊 حد اسپم: ${faNum(settings.flood_limit)} پیام در ${
+        faNum(settings.flood_window_seconds)
+      } ثانیه`,
       warn: `⚠️ حد اخطار: ${faNum(settings.warn_limit)} • اقدام: ${
         WARN_ACTION_LABELS[settings.warn_action] ?? settings.warn_action
       }`,
       mute: `🔇 مدت سکوت: ${faNum(settings.mute_duration_minutes)} دقیقه`,
       welcome_text: `👋 متن خوش‌آمد:\n${truncate(settings.welcome_text, 300)}`,
       rules_text: `📜 قوانین:\n${truncate(settings.rules_text, 300)}`,
+      verify: `🔍 تأیید هویت: ${(await verifyEnabled(deps, chatId)) ? "🟢 روشن" : "🔴 خاموش"}`,
     };
     const text = lines[field] ?? "این مورد در پنل خصوصی ربات قابل تغییر است.";
     await reply(
