@@ -207,6 +207,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
       ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
+      // لایهٔ دیجی قبل از پاسخ‌های سریع می‌آید تا دستورهایش («پنل»، «راهنما»، «ایدی»)
+      // به کارت‌های قدیمی نرسند. در چت خصوصی خودش false برمی‌گرداند.
+      if (
+        update.message &&
+        await handleDigiPlus({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
+      if (
+        update.message &&
+        await handleDigiText({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
       if (
         update.message &&
         await handlePresetTrigger({ ...extras, settings, limiter }, update.message)
@@ -220,14 +230,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (
         update.message &&
         await handleGroupExtra({ ...extras, settings, groupAdmins }, update.message)
-      ) return;
-      if (
-        update.message &&
-        await handleDigiPlus({ ...extras, settings, groupAdmins }, update.message)
-      ) return;
-      if (
-        update.message &&
-        await handleDigiText({ ...extras, settings, groupAdmins }, update.message)
       ) return;
       if (
         update.message &&
