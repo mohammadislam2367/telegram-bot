@@ -1,16 +1,34 @@
 /**
- * هستهٔ مشترک لایهٔ دیجی: کارت‌ها، متن پنل، قفل‌ها، مجازات و سرگرمی‌ها.
+ * هستهٔ مشترک لایهٔ دیجی: کارت‌ها، قفل‌ها، مجازات، سرگرمی و موتور قالب خوشامد.
  */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppConfig } from "../_shared/config.ts";
+import type { TelegramApi } from "../_shared/telegram.ts";
+import type { SettingsStore } from "../_shared/settings.ts";
+import type { Logger } from "../_shared/logger.ts";
+import type { GroupAdminChecker } from "../_shared/auth.ts";
 import type { GroupSettingsRow, TgMessage } from "../_shared/types.ts";
 import { insertRow, selectOne, selectRows, updateRows } from "../_shared/db.ts";
-import { keyboard } from "../_shared/keyboards.ts";
 import { faDate, faDateTime, faNum } from "../_shared/texts.ts";
 import { escapeHtml, normalizeDigits } from "../_shared/validation.ts";
-import { buildPermissions, hasPermissionLocks, LOCK_DEFS, normalizeLocks } from "./locks.ts";
-import { digiCard, type DigiDeps } from "./digi.ts";
+import { buildPermissions, hasPermissionLocks, LOCK_DEFS } from "./locks.ts";
 
-export { digiCard };
-export type { DigiDeps };
+export interface DigiDeps {
+  cfg: AppConfig;
+  sb: SupabaseClient;
+  tg: TelegramApi;
+  settings: SettingsStore;
+  log: Logger;
+  groupAdmins: GroupAdminChecker;
+}
+
+const DIVIDER = "─━┅┅┈ ✁ ┈┅┅━─";
+const FOOTER = "━━ 🆂🅿🅸🆇🅻🅴 ━━";
+
+/** ظاهر کارت‌ها، عین استایل دیجی‌انتی. */
+export function digiCard(title: string, lines: string[]): string {
+  return [title, DIVIDER, ...lines, DIVIDER, FOOTER].filter(Boolean).join("\n");
+}
 
 /** نام‌های فارسی هر قفل — فهرست کامل دیجی. */
 const ALIASES: Record<string, string[]> = {
@@ -299,55 +317,6 @@ export async function bumpScore(
   return score;
 }
 
-export function panelText(settings: GroupSettingsRow): string {
-  const locks = normalizeLocks(settings.locks);
-  const on = (value: boolean) => value ? "🟢" : "🔴";
-  return digiCard("🛡 <b>پنل مدیریت گروه</b>", [
-    `١. قفل‌ها: ${on(Object.keys(locks).length > 0)} ${faNum(Object.keys(locks).length)} فعال`,
-    `٢. ضدلینک: ${on(settings.antilink_enabled)} · ضدتبچی: ${on(settings.antispam_enabled)}`,
-    `٣. ضدفوروارد: ${on(settings.block_forwards)} · خوش‌آمد: ${on(settings.welcome_enabled)}`,
-    `٤. تأیید هویت: ${on(settings.verify_enabled)} · سخت‌گیرانه: ${on(settings.strict_mode)}`,
-    `٥. اخطار: ${faNum(settings.warn_limit)} تا ${
-      settings.warn_action === "mute" ? "سکوت" : settings.warn_action === "kick" ? "اخراج" : "بن"
-    } · سکوت: ${faNum(settings.mute_duration_minutes)} دقیقه`,
-    "",
-    "دستورها: <code>قفل ها</code> · <code>لیست فیلتر</code> · <code>لیست بن</code> · <code>راهنما</code>",
-  ]);
-}
-
-export function panelMarkup(privateUrl: string) {
-  return keyboard([
-    [
-      { text: "🔐 قفل‌ها", callback_data: "gp:p:3", style: "success" },
-      { text: "📜 قوانین", callback_data: "gp:rules", style: "primary" },
-    ],
-    [
-      { text: "🛡 ضدلینک", callback_data: "gp:t:antilink_enabled", style: "primary" },
-      { text: "🧹 ضدتبچی", callback_data: "gp:t:antispam_enabled", style: "primary" },
-    ],
-    [
-      { text: "👋 خوش‌آمد", callback_data: "gp:t:welcome_enabled", style: "primary" },
-      { text: "📤 ضدفوروارد", callback_data: "gp:t:block_forwards", style: "primary" },
-    ],
-    [
-      { text: "🔍 تأیید هویت", callback_data: "gp:t:verify_enabled", style: "primary" },
-      { text: "⚖️ سخت‌گیرانه", callback_data: "gp:t:strict_mode", style: "primary" },
-    ],
-    [
-      { text: "🔇 مدت سکوت", callback_data: "gp:show:mute", style: "primary" },
-      { text: "⚠️ حد اخطار", callback_data: "gp:show:warn", style: "primary" },
-    ],
-    [
-      { text: "🔒 قفل گروه", callback_data: "gp:lock", style: "danger" },
-      { text: "🔓 باز کردن", callback_data: "gp:unlock", style: "success" },
-    ],
-    [
-      { text: "⚙️ تنظیمات کامل", url: privateUrl },
-      { text: "❌ بستن", callback_data: "gp:close", style: "danger" },
-    ],
-  ]);
-}
-
 export function helpCard(): string {
   return digiCard("🤖 <b>راهنمای دستورها</b>", [
     "🔐 <code>قفل لینک</code> · <code>بازکردن لینک</code> — ۳۷ قفل",
@@ -372,40 +341,55 @@ export function targetOf(message: TgMessage): number | null {
   return null;
 }
 
-/** قالب‌بندی خوش‌آمد با متغیرهای دیجی. */
+export interface WelcomeContext {
+  chatId: number;
+  chatTitle?: string;
+  botUsername?: string;
+  timeZone?: string;
+  now?: Date;
+  /** لینک HTML نام کاربر — جای {name} می‌نشیند. */
+  mention?: string;
+}
+
+/**
+ * قالب‌بندی خوش‌آمد/خداحافظی با همهٔ متغیرهای دیجی‌انتی:
+ * {name} {username} {group} {TIME} {DATE} {DATE_TIME} {YEAR} {MONTH} {DAY}
+ * {USERID} {CHATID} {GAP_NAME} {BOTUSER} {FIRST_NAME} {LAST_NAME} {PERSON}
+ */
 export function renderWelcome(
   template: string,
-  ctx: {
-    user: { id: number; first_name?: string; last_name?: string; username?: string };
-    chat: { id: number; title?: string };
-    botUsername: string;
-    now?: Date;
-  },
+  user: { id: number; first_name?: string; last_name?: string; username?: string },
+  ctx: WelcomeContext,
 ): string {
   const now = ctx.now ?? new Date();
+  const zone = ctx.timeZone ?? "Asia/Tehran";
   const pad = (value: number) => String(value).padStart(2, "0");
+  const full = [user.first_name, user.last_name].filter(Boolean).join(" ") || "دوست عزیز";
+  const safeName = ctx.mention ?? escapeHtml(full);
+  const safeGroup = escapeHtml(ctx.chatTitle ?? "گروه");
+  const username = user.username ? `@${user.username}` : escapeHtml(full);
   const values: Record<string, string> = {
+    NAME: safeName,
+    name: safeName,
+    USERNAME: username,
+    username: username,
+    GROUP: safeGroup,
+    group: safeGroup,
+    GAP_NAME: safeGroup,
     TIME: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-    DATE: faDate(now.toISOString(), "Asia/Tehran"),
-    DATE_TIME: faDateTime(now.toISOString(), "Asia/Tehran"),
+    DATE: faDate(now.toISOString(), zone),
+    DATE_TIME: faDateTime(now.toISOString(), zone),
     YEAR: String(now.getFullYear()),
     MONTH: String(now.getMonth() + 1),
     DAY: String(now.getDate()),
-    USERID: String(ctx.user.id),
-    CHATID: String(ctx.chat.id),
-    GAP_NAME: ctx.chat.title ?? "گروه",
-    BOTUSER: ctx.botUsername,
-    USERNAME: ctx.user.username ? `@${ctx.user.username}` : "",
-    FIRST_NAME: ctx.user.first_name ?? "",
-    LAST_NAME: ctx.user.last_name ?? "",
+    USERID: String(user.id),
+    CHATID: String(ctx.chatId),
+    BOTUSER: ctx.botUsername ? `@${ctx.botUsername}` : "",
+    FIRST_NAME: escapeHtml(user.first_name ?? ""),
+    LAST_NAME: escapeHtml(user.last_name ?? ""),
     PERSON: "عضو",
   };
-  const full = [ctx.user.first_name, ctx.user.last_name].filter(Boolean).join(" ") ||
-    "دوست عزیز";
-  let output = template
-    .replace(/\{(name|NAME)\}/g, full)
-    .replace(/\{(group|GROUP)\}/g, ctx.chat.title ?? "گروه")
-    .replace(/\{username\}/g, values.USERNAME);
+  let output = template;
   for (const [key, value] of Object.entries(values)) {
     output = output.replace(new RegExp(`\\{${key}\\}`, "g"), value);
   }
