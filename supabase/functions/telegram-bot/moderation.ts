@@ -17,6 +17,7 @@ import type {
 import { answerCallback, askConfirm, type Ctx, deleteMessageSafe, send } from "./context.ts";
 import { ensureGroupRecord, getGroupSettings, markGroupInactive } from "./groups.ts";
 import { detectContentLock, normalizeLocks } from "./locks.ts";
+import { renderWelcome } from "./digi_core.ts";
 
 export interface GroupRuntime {
   group: GroupRow;
@@ -731,16 +732,6 @@ export async function handleGroupCommand(
 
 // ─── welcome / goodbye ───────────────────────────────────────────────────────
 
-function fillTemplate(
-  template: string,
-  values: { name: string; username: string; group: string },
-): string {
-  return template
-    .replace(/\{name\}/g, values.name)
-    .replace(/\{username\}/g, values.username)
-    .replace(/\{group\}/g, values.group);
-}
-
 export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdated): Promise<void> {
   const runtime = await loadGroupRuntime(ctx, true);
   if (!runtime) return;
@@ -781,7 +772,7 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
           {
             preview: false,
             markup: keyboard([[
-              { text: "✅ تأیید هویت", callback_data: `gp:v:${user.id}`, style: "success" },
+              { text: "✅ تأیید هویت", callback_data: `dg:v:${user.id}`, style: "success" },
             ]]),
           },
         );
@@ -800,13 +791,17 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
 
     const name = displayName(user);
     const mention = `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`;
-    let text = fillTemplate(runtime.settings.welcome_text, {
-      name: mention,
-      username: user.username ? `@${user.username}` : name,
-      group: escapeHtml(groupTitle),
+    const timeZone = await ctx.settings.get("timezone").catch(() => "Asia/Tehran");
+    let text = renderWelcome(runtime.settings.welcome_text, user, {
+      chatId: ctx.chatId,
+      chatTitle: groupTitle,
+      botUsername: ctx.cfg.botUsername,
+      timeZone,
+      now: ctx.now,
+      mention,
     });
     // اگر متن دلخواه اسم عضو را نداشت، با نام همان عضو سلام می‌کنیم.
-    if (!runtime.settings.welcome_text.includes("{name}")) {
+    if (!/\{(?:name|NAME)\}/.test(runtime.settings.welcome_text)) {
       text = `👋 ${mention} عزیز، خوش آمدی!\n\n${text}`;
     }
     await send(ctx, text);
@@ -821,10 +816,13 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
     if (!dedupe.allowed || !runtime.settings.goodbye_enabled) return;
 
     const name = displayName(user);
-    const text = fillTemplate(runtime.settings.goodbye_text, {
-      name: escapeHtml(name),
-      username: user.username ? `@${user.username}` : name,
-      group: escapeHtml(groupTitle),
+    const text = renderWelcome(runtime.settings.goodbye_text, user, {
+      chatId: ctx.chatId,
+      chatTitle: groupTitle,
+      botUsername: ctx.cfg.botUsername,
+      timeZone: await ctx.settings.get("timezone").catch(() => "Asia/Tehran"),
+      now: ctx.now,
+      mention: `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`,
     });
     await send(ctx, text);
   }
@@ -872,8 +870,8 @@ export async function handleMyChatMemberUpdate(
       ].join("\n"),
       keyboard([
         [
-          { text: "🛡 پنل گروه", callback_data: "gp:p:1", style: "primary" },
-          { text: "⚙️ تنظیمات کامل", url: `https://t.me/${ctx.cfg.botUsername}?start=admin` },
+          { text: "🛡 پنل گروه", callback_data: "dg:m", style: "primary" },
+          { text: "⚙️ تنظیمات کامل", url: `https://t.me/${ctx.cfg.botUsername}?start=group` },
         ],
       ]),
     );
