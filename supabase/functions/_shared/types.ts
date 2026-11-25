@@ -52,6 +52,16 @@ export interface TgMessage {
   animation?: { file_id: string };
   document?: { file_id: string };
   audio?: { file_id: string };
+  voice?: { file_id: string; duration?: number };
+  video_note?: { file_id: string; duration?: number };
+  sticker?: { file_id: string; is_video?: boolean; emoji?: string };
+  poll?: { id: string; question?: string };
+  dice?: { emoji: string; value: number };
+  game?: { title: string };
+  contact?: Record<string, unknown>;
+  location?: Record<string, unknown>;
+  venue?: Record<string, unknown>;
+  via_bot?: TgUser;
 }
 
 export interface TgCallbackQuery {
@@ -187,6 +197,8 @@ export interface GroupSettingsRow {
   delete_warn_messages: boolean;
   verify_enabled: boolean;
   strict_mode: boolean;
+  /** قفل‌های تفکیکی گروه: { link: true, photo: true, ... } */
+  locks: Record<string, boolean>;
   flood_limit: number;
   flood_window_seconds: number;
   warn_limit: number;
