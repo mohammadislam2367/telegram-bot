@@ -11,6 +11,7 @@
  *   dg:s / dg:f     کاربران مدیر و ویژه / فیلتر کلمات
  *   dg:st           آمار گروه
  *   dg:u            سرگرمی
+ *   dg:o / dg:home  پنل مالک / کارت خانه در چت خصوصی
  *   dg:h / dg:gr    راهنما / قوانین
  *   dg:v:<user>     تأیید هویت عضو تازه
  */
@@ -360,7 +361,30 @@ function funMarkup(): unknown {
 }
 
 /** کارت خانه در چت خصوصی — تنها ورودی پنل. */
-export function privateHome(deps: DigiDeps): { text: string; markup: unknown } {
+export function privateHome(
+  deps: DigiDeps,
+  userId?: number,
+): { text: string; markup: unknown } {
+  const isOwner = userId !== undefined && deps.cfg.superAdminIds.includes(userId);
+  const rows: Btn[][] = [];
+  if (isOwner) {
+    rows.push([{ text: "👑 پنل مالک", callback_data: "dg:o", style: "success" }]);
+  }
+  rows.push([
+    { text: "🧰 ابزارها", callback_data: "u:tb", style: "primary" },
+    { text: "👤 بیو من", callback_data: "u:bi", style: "success" },
+  ]);
+  rows.push([
+    { text: "ℹ️ درباره", callback_data: "dg:about", style: "primary" },
+    { text: "🤖 هوش مصنوعی", callback_data: "dg:ai", style: "success" },
+  ]);
+  rows.push([
+    urlButton(
+      "➕ افزودن به گروه",
+      `https://t.me/${deps.cfg.botUsername}?startgroup=true`,
+      "success",
+    ),
+  ]);
   return {
     text: digiCard("🤖 <b>اسپیکسل</b>", [
       "دستیار و مدیر گروه، به سبک دیجی‌انتی.",
@@ -368,25 +392,62 @@ export function privateHome(deps: DigiDeps): { text: string; markup: unknown } {
       "• <code>/ai سؤالت</code> — چت هوشمند",
       "• <code>راهنما</code> — همهٔ دستورها",
       "• در گروه بنویس <code>پنل</code> تا پنل مدیریت باز شود",
+      isOwner ? "• <code>/owner</code> — پنل مالک و مدیریت کامل ربات" : "",
       "",
       "دکمه‌های زیر را بزن.",
     ]),
+    markup: keyboard(rows),
+  };
+}
+
+/** 👑 پنل مالک ربات با آمار زنده و میان‌بر همهٔ بخش‌های مدیریت. */
+async function ownerScreen(deps: DigiDeps): Promise<{ text: string; markup: unknown }> {
+  const count = async (run: () => Promise<number>): Promise<number> => {
+    try {
+      return await run();
+    } catch {
+      return 0;
+    }
+  };
+  const [users, groups, blocked, words, registered] = await Promise.all([
+    count(() => countRows(deps.sb, "users")),
+    count(() => countRows(deps.sb, "groups", (q) => q.eq("is_active", true))),
+    count(() => countRows(deps.sb, "banned_users", (q) => q.eq("is_active", true))),
+    count(() => countRows(deps.sb, "group_words")),
+    count(() => countRows(deps.sb, "group_settings")),
+  ]);
+  return {
+    text: digiCard("👑 <b>پنل مالک اسپیکسل</b>", [
+      `شناسهٔ مالک: <code>${faNum(deps.cfg.superAdminIds[0] ?? 0)}</code>`,
+      `👥 کاربران: <b>${faNum(users)}</b> · 👮 گروه‌های فعال: <b>${faNum(groups)}</b>`,
+      `🚫 مسدود: <b>${faNum(blocked)}</b>`,
+      `🗂 گروه‌های ثبت‌شده: <b>${faNum(registered)}</b> · 🔤 کلمات فیلتر: <b>${faNum(words)}</b>`,
+      "",
+      "همهٔ بخش‌های مدیریت از همین‌جا باز می‌شوند.",
+    ]),
     markup: keyboard([
       [
-        { text: "🧰 ابزارها", callback_data: "u:tb", style: "primary" },
-        { text: "👤 بیو من", callback_data: "u:bi", style: "success" },
+        { text: "👥 کاربران", callback_data: "a:us", style: "primary" },
+        { text: "📢 پیام همگانی", callback_data: "a:bc", style: "success" },
       ],
       [
-        { text: "ℹ️ درباره", callback_data: "dg:about", style: "primary" },
-        { text: "🤖 هوش مصنوعی", callback_data: "dg:ai", style: "success" },
+        { text: "📋 تبلیغات", callback_data: "a:ad", style: "primary" },
+        { text: "📊 آمار ربات", callback_data: "a:st", style: "success" },
       ],
       [
-        urlButton(
-          "➕ افزودن به گروه",
-          `https://t.me/${deps.cfg.botUsername}?startgroup=true`,
-          "success",
-        ),
+        { text: "⚙️ تنظیمات ربات", callback_data: "a:se", style: "primary" },
+        { text: "🤖 هوش مصنوعی", callback_data: "a:ai", style: "primary" },
       ],
+      [
+        { text: "👮 گروه‌ها", callback_data: "a:gr", style: "primary" },
+        { text: "🧰 ابزارها", callback_data: "a:tl", style: "primary" },
+      ],
+      [
+        { text: "🛡 امنیت", callback_data: "a:sc", style: "primary" },
+        { text: "📝 محتوا", callback_data: "a:ct", style: "primary" },
+      ],
+      [{ text: "🎛 داشبورد کلاسیک", callback_data: "a:h", style: "success" }],
+      backRow("dg:home"),
     ]),
   };
 }
@@ -519,6 +580,22 @@ export async function handleDigiPanelCallback(
     return true;
   }
 
+  if (action === "home") {
+    const home = privateHome(deps, cq.from.id);
+    await show(home.text, home.markup);
+    return true;
+  }
+
+  if (action === "o") {
+    if (!deps.cfg.superAdminIds.includes(cq.from.id)) {
+      await reply("⛔ این بخش فقط برای مالک ربات است.", true);
+      return true;
+    }
+    const view = await ownerScreen(deps);
+    await show(view.text, view.markup);
+    return true;
+  }
+
   if (!isGroup) {
     await reply("این بخش فقط در گروه کار می‌کند.", true);
     return true;
@@ -550,21 +627,26 @@ export async function handleDigiPanelCallback(
   if (action === "t") {
     const key = parts[2] ?? "";
     const page = Number(parts[3] ?? 0) || 0;
-    const locks = normalizeLocks(settings.locks);
-    if (!(key in locks)) {
+    // normalizeLocks فقط قفل‌های روشن را برمی‌گرداند؛ پس وجود کلید را باید
+    // در فهرست قفل‌ها بررسی کنیم، نه در شیء قفل‌های فعال.
+    const def = LOCK_DEFS.find((item) => item.key === key);
+    if (!def) {
       await reply("این قفل شناخته نشد.");
       return true;
     }
-    locks[key] = !locks[key];
+    const locks = normalizeLocks(settings.locks);
+    const enable = !locks[key];
+    if (enable) locks[key] = true;
+    else delete locks[key];
     await saveSettings(deps, chatId, { locks });
-    if (key === "all" || ["photo", "video", "voice", "music", "sticker", "poll"].includes(key)) {
+    if (def.kind === "permission") {
       try {
         await applyPermissions(deps, chatId, locks);
       } catch {
         // دسترسی ربات کافی نیست
       }
     }
-    await reply(locks[key] ? "قفل شد" : "باز شد");
+    await reply(`${def.emoji} ${def.label}: ${enable ? "قفل شد" : "باز شد"}`);
     const view = locksText({ ...settings, locks }, page);
     await show(view.text, view.markup);
     return true;
@@ -572,8 +654,11 @@ export async function handleDigiPanelCallback(
 
   if (action === "la") {
     const enable = parts[2] === "on";
-    const locks = normalizeLocks(settings.locks);
-    for (const key of Object.keys(locks)) locks[key] = enable;
+    // «همه باز/همه بسته» باید روی همهٔ قفل‌ها اثر بگذارد، نه فقط قفل‌های روشن.
+    const locks: Record<string, boolean> = {};
+    if (enable) {
+      for (const def of LOCK_DEFS) locks[def.key] = true;
+    }
     await saveSettings(deps, chatId, { locks });
     try {
       await applyPermissions(deps, chatId, locks);
@@ -731,7 +816,7 @@ export async function handleDigiPanelMessage(
   if (!wantsPanel) return false;
 
   if (isPrivate) {
-    const home = privateHome(deps);
+    const home = privateHome(deps, from.id);
     await deps.tg.sendMessage(chat.id, home.text, {
       preview: false,
       markup: home.markup as never,
