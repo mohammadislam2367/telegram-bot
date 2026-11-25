@@ -1,7 +1,7 @@
 /**
  * 💬 پاسخ در گروه — وقتی ربات را منشن کنند یا کسی روی پیامش ریپلای کند،
- * ربات جواب می‌دهد. اگر هوش مصنوعی روشن باشد پاسخ با هوش مصنوعی ساخته
- * می‌شود؛ در غیر این صورت موتور سریع داخلی همان‌جا جواب می‌دهد.
+ * ربات جواب می‌دهد. پیش‌فرض دستورمحور است: بدون `/ai` هیچ پاسخ هوش مصنوعی
+ * ساخته نمی‌شود و فقط کارت راهنما فرستاده می‌شود.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppConfig } from "../_shared/config.ts";
@@ -52,6 +52,23 @@ export function botIsAddressed(cfg: AppConfig, message: TgMessage): boolean {
 /** منشن ربات را از متن حذف می‌کند تا سوال خالص بماند. */
 export function stripMention(cfg: AppConfig, text: string): string {
   return text.replace(mentionRegex(cfg.botUsername), " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * کارت «دستورمحور» گروه — پیش‌فرض ربات مثل دیجی‌انتی دستور است، نه چت آزاد.
+ * چت هوشمند فقط با درخواست صریح `/ai سؤال` فعال می‌شود.
+ */
+function groupCard(): string {
+  return [
+    sectionTitle("🤖 به‌جای چت، با دستور کار می‌کنم"),
+    "🛡 <code>/panel</code> — پنل مدیریت گروه",
+    divider(),
+    "📜 <code>/rules</code> · 🆔 <code>/id</code> · 📊 <code>/stats</code>",
+    "⚠️ <code>/warn</code> · 🚫 <code>/ban</code> · 🔇 <code>/mute</code> · 🧹 <code>/purge</code>",
+    "🍿 <code>/anime نام</code> · 📰 <code>/news</code> · 🎲 <code>/dice</code> · 🎯 <code>/quiz</code>",
+    "",
+    "🤖 <b>چت هوشمند:</b> <code>/ai سؤالت</code> — فقط همین‌طور روشن می‌شود.",
+  ].join("\n");
 }
 
 /** وقتی فقط منشن بدون سوال می‌آید، کارت راهنمای کوتاه. */
@@ -119,13 +136,17 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
   if (!botIsAddressed(deps.cfg, message)) return false;
 
   const raw = (message.text ?? message.caption ?? "").trim();
-  if (!raw || raw.startsWith("/")) return false;
+  if (!raw) return false;
+  // پیش‌فرض دستورمحور است؛ فقط `/ai` اجازهٔ ورود به چت هوشمند می‌دهد.
+  const explicitAi = /^\/ai(\s|$)/i.test(raw);
+  if (raw.startsWith("/") && !explicitAi) return false;
 
   const from = message.from;
   // پیام‌های سرویس (بدون فرستنده) یا فرستندهٔ ربات را جواب نمی‌دهیم.
   if (!from || from.is_bot) return false;
 
   const text = stripMention(deps.cfg, raw);
+  const question = text.replace(/^\/ai\b\s*/i, "").trim();
   if (!text) {
     try {
       await deps.tg.sendMessage(chat.id, mentionCard(), {
@@ -155,6 +176,34 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
     // پیش‌فرض کافی است
   }
 
+  // بدون درخواست صریح، هیچ پاسخی از هوش مصنوعی ساخته نمی‌شود.
+  if (!explicitAi) {
+    try {
+      await deps.tg.sendMessage(chat.id, groupCard(), {
+        preview: false,
+        replyTo: message.message_id,
+      });
+    } catch (error) {
+      await deps.log.warn("group card failed", {
+        chatId: chat.id,
+        error: (error as Error).message,
+      });
+    }
+    return true;
+  }
+
+  if (!question) {
+    try {
+      await deps.tg.sendMessage(chat.id, groupCard(), { preview: false });
+    } catch (error) {
+      await deps.log.warn("group card failed", {
+        chatId: chat.id,
+        error: (error as Error).message,
+      });
+    }
+    return true;
+  }
+
   let body = "";
   if (await aiEnabled(deps)) {
     const quota = await aiQuotaFor(deps, chat.id, from.id, timeZone);
@@ -162,7 +211,7 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
       try {
         const reply = await answerQuestion(
           { sb: deps.sb, settings: deps.settings, cfg: deps.cfg },
-          { userId: from.id, text, memoryEnabled: false },
+          { userId: from.id, text: question, memoryEnabled: false },
         );
         body = reply.text;
       } catch (error) {
@@ -173,7 +222,7 @@ export async function handleBotReply(deps: ReplyDeps, message: TgMessage): Promi
       }
     }
   }
-  if (!body.trim()) body = quickAnswer(deps, text, timeZone);
+  if (!body.trim()) body = quickAnswer(deps, question, timeZone);
 
   try {
     await deps.tg.sendMessage(chat.id, body, {
