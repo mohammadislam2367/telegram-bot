@@ -66,6 +66,8 @@ const TOGGLE_FIELDS: Record<string, { label: string; emoji: string }> = {
   antispam_enabled: { label: "ضد تبچی", emoji: "🧹" },
   block_forwards: { label: "ضد فوروارد", emoji: "📤" },
   delete_warn_messages: { label: "حذف پیام متخلف", emoji: "✂️" },
+  verify_enabled: { label: "تأیید هویت", emoji: "🔍" },
+  strict_mode: { label: "سختگیرانه", emoji: "⚖️" },
 };
 
 const WARN_ACTION_LABELS: Record<string, string> = {
@@ -73,19 +75,6 @@ const WARN_ACTION_LABELS: Record<string, string> = {
   kick: "اخراج",
   ban: "بن",
 };
-
-/** قفل «تأیید هویت» هر گروه جدا ذخیره می‌شود (بدون تغییر ساختار جدول). */
-function verifyKey(chatId: number): string {
-  return `group_verify_${chatId}`;
-}
-
-async function verifyEnabled(deps: GroupExtraDeps, chatId: number): Promise<boolean> {
-  try {
-    return (await deps.settings.all())[verifyKey(chatId)] === true;
-  } catch {
-    return false;
-  }
-}
 
 function permsKey(chatId: number): string {
   return `group_saved_perms_${chatId}`;
@@ -174,7 +163,6 @@ async function panelMarkup(
 ): Promise<TgInlineKeyboardMarkup> {
   const timeZone = await deps.settings.get("timezone").catch(() => "Asia/Tehran");
   const privateUrl = `https://t.me/${deps.cfg.botUsername}?start=admin`;
-  const verifyOn = await verifyEnabled(deps, settings.group_id);
 
   if (page === 2) {
     return keyboard([
@@ -208,14 +196,7 @@ async function panelMarkup(
         { text: "📜 قوانین گروه", callback_data: "gp:rules", style: "primary" },
       ],
       [
-        {
-          text: `🔍 تأیید هویت: ${verifyOn ? "🟢" : "🔴"}`,
-          callback_data: "gp:vc",
-          style: verifyOn ? "success" : "primary",
-        },
         { text: "📊 گزارشات", callback_data: "gp:stats", style: "primary" },
-      ],
-      [
         { text: "⚙️ تنظیمات کامل", url: privateUrl },
       ],
       [
@@ -234,6 +215,7 @@ async function panelMarkup(
     [toggleRow("welcome_enabled", settings), toggleRow("goodbye_enabled", settings)],
     [toggleRow("antilink_enabled", settings), toggleRow("antispam_enabled", settings)],
     [toggleRow("block_forwards", settings), toggleRow("delete_warn_messages", settings)],
+    [toggleRow("verify_enabled", settings), toggleRow("strict_mode", settings)],
     [
       {
         text: `🌊 پیام رگباری: ${faNum(settings.flood_limit)}`,
@@ -282,6 +264,7 @@ async function panelText(
     `👥 اعضا: ${members === null ? "—" : faNum(members)}`,
     `🚪 خوش‌آمد: ${on("welcome_enabled")} • 🛡 ضد لینک: ${on("antilink_enabled")}`,
     `🧹 ضد تبچی: ${on("antispam_enabled")} • 📤 ضدفوروارد: ${on("block_forwards")}`,
+    `🔍 تأیید هویت: ${on("verify_enabled")} • ⚖️ سختگیرانه: ${on("strict_mode")}`,
     `⚠️ اخطار: ${faNum(settings.warn_limit)} تا ${
       WARN_ACTION_LABELS[settings.warn_action] ?? settings.warn_action
     } • 🔇 ${faNum(settings.mute_duration_minutes)} دقیقه`,
@@ -374,12 +357,12 @@ export async function handleGroupExtra(
   }
 
   if (command === "verify") {
-    const current = await verifyEnabled(deps, chatId);
-    await deps.settings.set(verifyKey(chatId), !current);
+    const settings = await loadGroupSettings(deps, chatId);
+    await saveGroupSettings(deps, chatId, { verify_enabled: !settings.verify_enabled });
     await reply(
       deps,
       chatId,
-      !current
+      !settings.verify_enabled
         ? "🔍 تأیید هویت روشن شد.\nاعضای تازه تا زدن دکمهٔ «✅ تأیید هویت» نمی‌توانند پیام بفرستند."
         : "🔍 تأیید هویت خاموش شد. اعضای تازه آزادانه پیام می‌فرستند.",
     );
@@ -555,18 +538,6 @@ export async function handleGroupPanelCallback(
     return true;
   }
 
-  if (action === "vc") {
-    const current = await verifyEnabled(deps, chatId);
-    await deps.settings.set(verifyKey(chatId), !current);
-    await renderPanel(deps, chatId, 2, messageId);
-    await answer(
-      deps,
-      cq,
-      `تأیید هویت: ${!current ? "روشن شد" : "خاموش شد"}`,
-    );
-    return true;
-  }
-
   if (action === "p") {
     const page = Number(parts[2]) === 2 ? 2 : 1;
     await renderPanel(deps, chatId, page, messageId);
@@ -676,7 +647,6 @@ export async function handleGroupPanelCallback(
       mute: `🔇 مدت سکوت: ${faNum(settings.mute_duration_minutes)} دقیقه`,
       welcome_text: `👋 متن خوش‌آمد:\n${truncate(settings.welcome_text, 300)}`,
       rules_text: `📜 قوانین:\n${truncate(settings.rules_text, 300)}`,
-      verify: `🔍 تأیید هویت: ${(await verifyEnabled(deps, chatId)) ? "🟢 روشن" : "🔴 خاموش"}`,
     };
     const text = lines[field] ?? "این مورد در پنل خصوصی ربات قابل تغییر است.";
     await reply(
