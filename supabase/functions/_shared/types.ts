@@ -185,6 +185,8 @@ export interface GroupSettingsRow {
   antispam_enabled: boolean;
   block_forwards: boolean;
   delete_warn_messages: boolean;
+  verify_enabled: boolean;
+  strict_mode: boolean;
   flood_limit: number;
   flood_window_seconds: number;
   warn_limit: number;
