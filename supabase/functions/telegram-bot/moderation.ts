@@ -277,6 +277,38 @@ async function deleteIfNeeded(ctx: Ctx, runtime: GroupRuntime, messageId: number
   await deleteMessageSafe(ctx, messageId);
 }
 
+/**
+ * ⚖️ حالت سختگیرانه: اولین تخلف مستقیماً سکوت می‌شود، بدون صبر کردن برای
+ * رسیدن به حد اخطار. اگر حالت سختگیرانه خاموش باشد false برمی‌گرداند تا
+ * مسیر عادی اخطار اجرا شود.
+ */
+async function strictPunish(
+  ctx: Ctx,
+  runtime: GroupRuntime,
+  targetId: number,
+  reason: string,
+): Promise<boolean> {
+  if (runtime.settings.strict_mode !== true) return false;
+  const until = new Date(Date.now() + runtime.settings.mute_duration_minutes * 60_000);
+  try {
+    await ctx.tg.restrictChatMember(ctx.chatId, targetId, until);
+    await upsertGroupBan(ctx, runtime, targetId, "mute", reason, until);
+    await logModeration(ctx, runtime, "auto_action", targetId, reason, {
+      auto: true,
+      strict: true,
+    }, 0);
+    await sendGroupNotice(
+      ctx,
+      `⚖️ حالت سختگیرانه: کاربر <code>${targetId}</code> برای ${
+        faNum(runtime.settings.mute_duration_minutes)
+      } دقیقه سکوت شد.\nدلیل: ${escapeHtml(reason)}`,
+    );
+  } catch (error) {
+    await ctx.log.warn("strict punish failed", { error: (error as Error).message });
+  }
+  return true;
+}
+
 /** ورودی همه‌ی پیام‌های گروه (شامل دستورات). */
 export async function handleGroupMessage(ctx: Ctx): Promise<void> {
   const message = ctx.update.message;
@@ -301,6 +333,7 @@ export async function handleGroupMessage(ctx: Ctx): Promise<void> {
   if (runtime.settings.antilink_enabled && containsLink(text, message.entities)) {
     if (!(await isWhitelistedLink(ctx, text))) {
       await deleteIfNeeded(ctx, runtime, message.message_id);
+      if (await strictPunish(ctx, runtime, targetId, "ارسال لینک ناخواسته")) return;
       await issueWarning(ctx, runtime, targetId, "ارسال لینک ناخواسته", {
         sourceMessageId: message.message_id,
         auto: true,
@@ -316,6 +349,7 @@ export async function handleGroupMessage(ctx: Ctx): Promise<void> {
     !message.is_automatic_forward
   ) {
     await deleteIfNeeded(ctx, runtime, message.message_id);
+    if (await strictPunish(ctx, runtime, targetId, "ارسال پیام فوروارد")) return;
     await issueWarning(ctx, runtime, targetId, "ارسال پیام فوروارد", {
       sourceMessageId: message.message_id,
       auto: true,
@@ -334,6 +368,9 @@ export async function handleGroupMessage(ctx: Ctx): Promise<void> {
     if (!decision.allowed) {
       const cooldown = ctx.limiter.hit(`warned:${ctx.chatId}:${targetId}`, 1, 30_000);
       await deleteMessageSafe(ctx, message.message_id);
+      if (cooldown.allowed && await strictPunish(ctx, runtime, targetId, "ارسال پیام سریع/اسپم")) {
+        return;
+      }
       if (cooldown.allowed) {
         await issueWarning(ctx, runtime, targetId, "ارسال پیام سریع/اسپم", {
           sourceMessageId: message.message_id,
@@ -701,14 +738,8 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
 
   // 🔍 تأیید هویت: عضو تازه تا زدن دکمه، محدود می‌شود (فقط اگر مدیر روشن کرده باشد).
   if (["left", "kicked"].includes(oldStatus) && newStatus === "member" && !user.is_bot) {
-    let verifyOn = false;
-    try {
-      verifyOn = (await ctx.settings.all())[`group_verify_${ctx.chatId}`] === true;
-    } catch {
-      verifyOn = false;
-    }
     const gate = ctx.limiter.hit(`verify:${ctx.chatId}:${user.id}`, 1, 120_000);
-    if (verifyOn && gate.allowed) {
+    if (runtime.settings.verify_enabled === true && gate.allowed) {
       const mention = `<a href="tg://user?id=${user.id}">${escapeHtml(displayName(user))}</a>`;
       try {
         await ctx.tg.call<boolean>("restrictChatMember", {
