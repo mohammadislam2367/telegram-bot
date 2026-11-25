@@ -53,7 +53,7 @@ export async function handlePrivateCommand(ctx: Ctx, parsed: ParsedCommand): Pro
           settings: ctx.settings,
           log: ctx.log,
           groupAdmins: ctx.groupAdmins,
-        });
+        }, ctx.userId);
         await ctx.tg.sendMessage(ctx.chatId, home.text, {
           preview: false,
           markup: home.markup as never,
@@ -168,7 +168,7 @@ export async function handlePrivateCommand(ctx: Ctx, parsed: ParsedCommand): Pro
         settings: ctx.settings,
         log: ctx.log,
         groupAdmins: ctx.groupAdmins,
-      });
+      }, ctx.userId);
       await ctx.tg.sendMessage(ctx.chatId, home.text, {
         preview: false,
         markup: home.markup as never,

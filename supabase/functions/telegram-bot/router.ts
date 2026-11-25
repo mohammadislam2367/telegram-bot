@@ -218,7 +218,7 @@ async function sendPrivateHome(ctx: Ctx): Promise<void> {
     settings: ctx.settings,
     log: ctx.log,
     groupAdmins: ctx.groupAdmins,
-  });
+  }, ctx.userId);
   try {
     await ctx.tg.sendMessage(ctx.chatId, home.text, {
       preview: false,
