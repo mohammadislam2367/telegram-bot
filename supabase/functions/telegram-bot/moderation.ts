@@ -699,6 +699,56 @@ export async function handleChatMemberUpdate(ctx: Ctx, update: TgChatMemberUpdat
   const user = update.new_chat_member.user;
   const groupTitle = runtime.group.title ?? String(runtime.group.telegram_chat_id);
 
+  // 🔍 تأیید هویت: عضو تازه تا زدن دکمه، محدود می‌شود (فقط اگر مدیر روشن کرده باشد).
+  if (["left", "kicked"].includes(oldStatus) && newStatus === "member" && !user.is_bot) {
+    let verifyOn = false;
+    try {
+      verifyOn = (await ctx.settings.all())[`group_verify_${ctx.chatId}`] === true;
+    } catch {
+      verifyOn = false;
+    }
+    const gate = ctx.limiter.hit(`verify:${ctx.chatId}:${user.id}`, 1, 120_000);
+    if (verifyOn && gate.allowed) {
+      const mention = `<a href="tg://user?id=${user.id}">${escapeHtml(displayName(user))}</a>`;
+      try {
+        await ctx.tg.call<boolean>("restrictChatMember", {
+          chat_id: ctx.chatId,
+          user_id: user.id,
+          permissions: {
+            can_send_messages: false,
+            can_send_audios: false,
+            can_send_documents: false,
+            can_send_photos: false,
+            can_send_videos: false,
+            can_send_video_notes: false,
+            can_send_voice_notes: false,
+            can_send_polls: false,
+            can_send_other_messages: false,
+            can_add_web_page_previews: false,
+          },
+        });
+        await ctx.tg.sendMessage(
+          ctx.chatId,
+          [
+            `🔍 ${mention} عزیز، خوش آمدی!`,
+            "برای اینکه بتوانی در گروه پیام بفرستی، روی دکمهٔ زیر بزن و هویتت را تأیید کن.",
+          ].join("\n"),
+          {
+            preview: false,
+            markup: keyboard([[
+              { text: "✅ تأیید هویت", callback_data: `gp:v:${user.id}`, style: "success" },
+            ]]),
+          },
+        );
+      } catch (error) {
+        await ctx.log.warn("verify prompt failed", {
+          chatId: ctx.chatId,
+          error: (error as Error).message,
+        });
+      }
+    }
+  }
+
   if (["left", "kicked"].includes(oldStatus) && ["member", "restricted"].includes(newStatus)) {
     const dedupe = ctx.limiter.hit(`welcome:${ctx.chatId}:${user.id}`, 1, 60_000);
     if (!dedupe.allowed || !runtime.settings.welcome_enabled) return;
