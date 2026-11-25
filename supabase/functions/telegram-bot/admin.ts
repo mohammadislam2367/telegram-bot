@@ -87,7 +87,9 @@ export async function handleAdminCallback(ctx: Ctx, parts: string[]): Promise<bo
   if (await handleSecurityCallback(ctx, parts)) return true;
   if (await handleToolsCallback(ctx, parts)) return true;
 
-  await answerCallback(ctx, "این بخش ناشناخته یا منقضی شده است.", true);
+  // دکمهٔ قدیمی/ناشناخته: داشبورد دوباره باز می‌شود تا کاربر گیر نکند.
+  await renderAdminHome(ctx);
+  await answerCallback(ctx, "داشبورد باز شد.");
   return true;
 }
 
