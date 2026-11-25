@@ -117,6 +117,13 @@ export function taglineFor(seed: number): string {
   return TAGLINES[index];
 }
 
+/** یک متن بیوی آماده و خوانا برای همان کاربر (بدون هوش مصنوعی). */
+export function bioSentence(user: TgUser): string {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() ||
+    "کاربر ناشناس";
+  return `${name}؛ ${taglineFor(user.id)}`;
+}
+
 export function bioText(user: TgUser): string {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() ||
     "کاربر ناشناس";
@@ -127,6 +134,7 @@ export function bioText(user: TgUser): string {
     `🆔 شناسه: <code>${user.id}</code>`,
     divider(),
     `💠 سبک: ${taglineFor(user.id)}`,
+    `💬 بیو: ${escapeHtml(bioSentence(user))}`,
     "<i>برای گرفتن کارت یک نفر، روی پیامش ریپلای کن و /bio بزن.</i>",
   ].join("\n");
 }
