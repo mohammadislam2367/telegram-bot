@@ -12,6 +12,7 @@ import type { GroupAdminChecker } from "../_shared/auth.ts";
 import { getAdmin } from "../_shared/auth.ts";
 import type { SlidingWindowLimiter } from "../_shared/rate_limit.ts";
 import { callRpc } from "../_shared/db.ts";
+import { offlineAnswer } from "../_shared/offline_brain.ts";
 import { todayInZone } from "../_shared/validation.ts";
 import { clearSession, getSession } from "../_shared/sessions.ts";
 import { keyboard } from "../_shared/keyboards.ts";
@@ -277,9 +278,31 @@ async function handlePrivateMessage(ctx: Ctx): Promise<void> {
     return;
   }
 
-  const aiEnabled = await ctx.settings.get("feature_ai");
-  if (aiEnabled) {
+  // دو حالت ربات: اگر ماژول AI و کلید فعال‌سازی هر دو روشن باشند، پاسخ هوشمند
+  // (با نشانگر تایپ) می‌آید؛ در غیر این صورت پاسخ فوری و حرفه‌ای داخلی، بدون فکر کردن.
+  const [aiFeature, aiOn] = await Promise.all([
+    ctx.settings.get("feature_ai"),
+    ctx.settings.get("ai_enabled"),
+  ]);
+  if (aiFeature && aiOn) {
     await handleUserAiMessage(ctx, text);
+    return;
+  }
+
+  const timeZone = await ctx.settings.get("timezone");
+  const quick = offlineAnswer(text, {
+    timeZone,
+    now: ctx.now,
+    botUsername: ctx.cfg.botUsername,
+  });
+  if (quick) {
+    await send(
+      ctx,
+      quick.text,
+      keyboard([
+        [{ text: "🏠 منوی اصلی", callback_data: "u:m", style: "success" }],
+      ]),
+    );
     return;
   }
 
@@ -351,7 +374,9 @@ async function handleCallback(ctx: Ctx): Promise<void> {
       return;
     }
 
-    await answerCallback(ctx, "این دکمه معتبر نیست.", true);
+    // دکمهٔ قدیمی/ناشناخته: به‌جای پیام خطا، منوی اصلی دوباره باز می‌شود.
+    await renderUserHome(ctx);
+    await answerCallback(ctx, "منوی اصلی باز شد.");
     return;
   }
 
