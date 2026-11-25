@@ -16,6 +16,7 @@ import type {
 } from "../_shared/types.ts";
 import { answerCallback, askConfirm, type Ctx, deleteMessageSafe, send } from "./context.ts";
 import { ensureGroupRecord, getGroupSettings, markGroupInactive } from "./groups.ts";
+import { detectContentLock, normalizeLocks } from "./locks.ts";
 
 export interface GroupRuntime {
   group: GroupRow;
@@ -328,6 +329,19 @@ export async function handleGroupMessage(ctx: Ctx): Promise<void> {
   if (await isGroupAdmin(ctx, ctx.userId)) return;
 
   const targetId = message.from.id;
+
+  // قفل‌های تفکیکی (لینک/یوزرنیم/هشتگ/فحاشی/…) پیش از بقیهٔ قواعد بررسی می‌شوند.
+  const lockHit = detectContentLock(message, normalizeLocks(runtime.settings.locks));
+  if (lockHit) {
+    await deleteMessageSafe(ctx, message.message_id);
+    const reason = `ارسال ${lockHit.label} ممنوع است`;
+    if (await strictPunish(ctx, runtime, targetId, reason)) return;
+    await issueWarning(ctx, runtime, targetId, reason, {
+      sourceMessageId: message.message_id,
+      auto: true,
+    });
+    return;
+  }
 
   // ضدلینک
   if (runtime.settings.antilink_enabled && containsLink(text, message.entities)) {
