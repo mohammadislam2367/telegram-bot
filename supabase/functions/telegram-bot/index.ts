@@ -30,6 +30,7 @@ import { handleDigiPlus } from "./digi_plus.ts";
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
+const BUILD = "digi-2026-11-25";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
@@ -121,6 +122,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return jsonResponse({
         ok: true,
         service: SERVICE,
+        build: BUILD,
         message: "Telegram webhook endpoint. POST updates from Telegram only.",
         webhook,
       });
@@ -128,6 +130,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return jsonResponse({
         ok: true,
         service: SERVICE,
+        build: BUILD,
         message: "Telegram webhook endpoint. POST updates from Telegram only.",
         webhook: {
           ok: false,
