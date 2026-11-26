@@ -21,6 +21,7 @@ import { faNum } from "../_shared/texts.ts";
 import type { GroupSettingsRow, TgCallbackQuery, TgMessage } from "../_shared/types.ts";
 import { escapeHtml } from "../_shared/validation.ts";
 import { LOCK_DEFS, normalizeLocks } from "./locks.ts";
+import { handleMoreAction } from "./digi_more.ts";
 import {
   applyPermissions,
   digiCard,
@@ -95,6 +96,7 @@ export function mainMarkup(isGroup: boolean): unknown {
       { text: "🎉 سرگرمی", callback_data: "dg:u", style: "success" },
       { text: "📜 قوانین", callback_data: "dg:gr", style: "primary" },
     ],
+    [{ text: "🛠 بیشتر", callback_data: "dg:more", style: "success" }],
     [
       { text: "ℹ️ راهنما", callback_data: "dg:h", style: "primary" },
       { text: "❌ بستن", callback_data: "dg:q", style: "danger" },
@@ -787,6 +789,12 @@ export async function handleDigiPanelCallback(
       preview: false,
       markup: keyboard([backRow("dg:m")]) as never,
     });
+    return true;
+  }
+
+  if (
+    await handleMoreAction(deps, chatId, settings, action, parts, { show, reply }, messageId)
+  ) {
     return true;
   }
 
