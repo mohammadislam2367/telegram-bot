@@ -28,10 +28,11 @@ import { handleGroupExtra } from "./group_extra.ts";
 import { handleDigiPlus } from "./digi_plus.ts";
 import { handleDigiPrivate } from "./digi_private.ts";
 import { handleDigiPanelCallback, handleDigiPanelMessage } from "./digi_panel.ts";
+import { handlePanelHomeCallback, handlePanelHomeMessage } from "./panel_home.ts";
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
-const BUILD = "digi-2026-11-26e";
+const BUILD = "digi-2026-11-26f";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
@@ -213,6 +214,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
         update.callback_query &&
         await handleToolboxCallback({ ...extras, settings }, update.callback_query)
       ) return;
+      // صفحهٔ اول پنل گروه (دکمهٔ «به‌روزرسانی» و «بازگشت» همهٔ صفحه‌ها).
+      if (
+        update.callback_query &&
+        await handlePanelHomeCallback({ ...extras, settings, groupAdmins }, update.callback_query)
+      ) return;
       // دکمه‌های پنل دیجی («dg:») اول از همه بررسی می‌شوند.
       if (
         update.callback_query &&
@@ -227,6 +233,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
         await handleDigiPrivate({ ...extras, settings, groupAdmins }, update.message)
       ) return;
       // پنل و صفحهٔ خانهٔ دیجی در گروه (شامل «پنل»).
+      if (
+        update.message &&
+        await handlePanelHomeMessage({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
       if (
         update.message &&
         await handleDigiPanelMessage({ ...extras, settings, groupAdmins }, update.message)
