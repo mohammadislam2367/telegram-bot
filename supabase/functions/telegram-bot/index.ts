@@ -31,7 +31,7 @@ import { handleDigiPanelCallback, handleDigiPanelMessage } from "./digi_panel.ts
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
-const BUILD = "digi-2026-11-26d";
+const BUILD = "digi-2026-11-26e";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
@@ -220,7 +220,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
       ) return;
       if (update.callback_query && await handleQuizCallback(extras, update.callback_query)) return;
       if (await handleBotGuard(extras, update)) return;
-      // پنل و صفحهٔ خانهٔ دیجی (شامل «/start» و «پنل»).
+      // کارت خانهٔ چت خصوصی («/start»، «منو»، «خانه») اول از همه.
+      // این ماژول برای پیام‌های گروه همیشه false برمی‌گرداند.
+      if (
+        update.message &&
+        await handleDigiPrivate({ ...extras, settings, groupAdmins }, update.message)
+      ) return;
+      // پنل و صفحهٔ خانهٔ دیجی در گروه (شامل «پنل»).
       if (
         update.message &&
         await handleDigiPanelMessage({ ...extras, settings, groupAdmins }, update.message)
@@ -230,11 +236,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (
         update.message &&
         await handleDigiPlus({ ...extras, settings, groupAdmins }, update.message)
-      ) return;
-      // در چت خصوصی هم کارت‌های دیجی («راهنما»، «ایدی») جای پاسخ‌های قدیمی.
-      if (
-        update.message &&
-        await handleDigiPrivate({ ...extras, settings, groupAdmins }, update.message)
       ) return;
       if (
         update.message &&
