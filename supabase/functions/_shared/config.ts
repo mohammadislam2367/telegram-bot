@@ -61,7 +61,7 @@ export function loadConfig(env: EnvSource = readEnv()): AppConfig {
     schedulerSecret: env.SCHEDULER_SECRET?.trim() ?? "",
     superAdminIds,
     geminiApiKey: env.GEMINI_API_KEY?.trim() ?? "",
-    geminiModel: env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+    geminiModel: env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
     botUsername: (env.BOT_USERNAME?.trim() || "Spixle_bot").replace(/^@/, ""),
     timezone: env.APP_TIMEZONE?.trim() || "Asia/Tehran",
     environment: env.DENO_ENV === "test"
