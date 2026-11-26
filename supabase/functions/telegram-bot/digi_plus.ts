@@ -6,7 +6,7 @@ import type { GroupSettingsRow, TgMessage } from "../_shared/types.ts";
 import { countRows, insertRow } from "../_shared/db.ts";
 import { faNum } from "../_shared/texts.ts";
 import { escapeHtml } from "../_shared/validation.ts";
-import { LOCK_DEFS, normalizeLocks } from "./locks.ts";
+import { isPhishing, LOCK_DEFS, normalizeLocks } from "./locks.ts";
 import {
   applyPermissions,
   bannedWords,
@@ -42,12 +42,15 @@ async function memberChecks(deps: DigiDeps, message: TgMessage): Promise<boolean
   if (await isAdmin(deps, chatId, from.id)) return false;
   if (await isVip(deps, chatId, from.id)) return false;
 
-  const body = normalize(message.text ?? message.caption ?? "");
+  const rawBody = message.text ?? message.caption ?? "";
+  const body = normalize(rawBody);
   if (!body) return false;
 
+  const settings = await loadSettings(deps, chatId);
   const words = await bannedWords(deps, chatId);
   const hit = words.find((word) => word && body.includes(word));
-  if (!hit) return false;
+  const phish = !hit && Boolean(settings?.antispam_enabled) && isPhishing(rawBody);
+  if (!hit && !phish) return false;
 
   try {
     await deps.tg.deleteMessage(chatId, message.message_id);
@@ -55,15 +58,14 @@ async function memberChecks(deps: DigiDeps, message: TgMessage): Promise<boolean
     // پیام قدیمی یا حذف‌شده
   }
 
-  let note = "پیام حاوی کلمهٔ ممنوع حذف شد. 🧹";
-  const settings = await loadSettings(deps, chatId);
+  let note = hit ? "پیام حاوی کلمهٔ ممنوع حذف شد. 🧹" : "پیام حاوی لینک کلاهبرداری حذف شد. 🛡";
   if (settings) {
     try {
       await insertRow(deps.sb, "user_warnings", {
         group_id: chatId,
         user_id: from.id,
         warned_by: 0,
-        reason: "فیلتر کلمات",
+        reason: hit ? "فیلتر کلمات" : "ضدفیشینگ",
       });
       const total = await countRows(
         deps.sb,
@@ -81,8 +83,8 @@ async function memberChecks(deps: DigiDeps, message: TgMessage): Promise<boolean
   await say(
     deps,
     chatId,
-    digiCard("🧹 <b>فیلتر کلمات</b>", [
-      `${from.first_name}: کلمهٔ ممنوع`,
+    digiCard(hit ? "🧹 <b>فیلتر کلمات</b>" : "🛡 <b>ضدفیشینگ</b>", [
+      `${from.first_name}: ${hit ? "کلمهٔ ممنوع" : "لینک کلاهبرداری"}`,
       note,
     ]),
   );
