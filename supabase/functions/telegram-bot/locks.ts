@@ -304,6 +304,58 @@ export function detectContentLock(
   return null;
 }
 
+// ─── ضدفیشینگ ───────────────────────────────────────────────────────────────
+
+/** دامنه‌های تقلیدی که در کمپین‌های فیشینگ تلگرام دیده می‌شوند. */
+const PHISH_DOMAINS: readonly string[] = [
+  "telegrom",
+  "telegrarn",
+  "teligram",
+  "telegraam",
+  "telgram",
+  "tlgrm",
+  "tcl.me",
+  "telegram-login",
+  "telegramlogin",
+];
+
+/** عبارت‌های طعمهٔ رایج کلاهبرداری فارسی. */
+const PHISH_WORDS: readonly string[] = [
+  "جایزه",
+  "قرعه",
+  "برنده شو",
+  "برنده شدی",
+  "ارمغان",
+  "هدیه رایگان",
+  "دو برابر",
+  "چند برابر",
+  "کلیک کن",
+  "پروکسی رایگان",
+  "ولت رایگان",
+  "شارژ رایگان",
+  "کد تایید",
+  "کد ورود",
+  "رمز کارت",
+  "درگاه پرداخت",
+  "افزایش ممبر",
+  "فالوور رایگان",
+];
+
+const URL_RE =
+  /(?:https?:\/\/|www\.)[^\s]+|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|me|xyz|top|site|online|app|io|co|info|biz|shop)\b/i;
+
+/**
+ * تشخیص پیام فیشینگ/کلاهبرداری: دامنهٔ تقلیدی، یا لینک همراه با عبارت طعمه.
+ * پیام‌های معمولی و لینک‌های بی‌خطر false می‌گیرند.
+ */
+export function isPhishing(text: string): boolean {
+  if (!text) return false;
+  const normalized = normalizePersian(text);
+  if (PHISH_DOMAINS.some((domain) => normalized.includes(domain))) return true;
+  if (!URL_RE.test(text) && !URL_RE.test(normalized)) return false;
+  return PHISH_WORDS.some((word) => normalized.includes(normalizePersian(word)));
+}
+
 /** برای پیام‌های پنل: خلاصهٔ قفل‌های روشن. */
 export function locksSummary(settings: GroupSettingsRow): string {
   const locks = normalizeLocks(settings.locks);
