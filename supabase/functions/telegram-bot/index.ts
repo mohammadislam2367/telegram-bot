@@ -31,7 +31,7 @@ import { handleDigiPanelCallback, handleDigiPanelMessage } from "./digi_panel.ts
 import { handleBotReply } from "./replies.ts";
 
 const SERVICE = "anime-click-ultimate-telegram-bot";
-const BUILD = "digi-2026-11-25c";
+const BUILD = "digi-2026-11-26d";
 
 const WEBHOOK_ALLOWED_UPDATES = [
   "message",
@@ -125,6 +125,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
         service: SERVICE,
         build: BUILD,
         message: "Telegram webhook endpoint. POST updates from Telegram only.",
+        // فقط بله/خیر؛ هیچ مقداری از کلیدها بیرون نمی‌رود.
+        configured: {
+          ai: Boolean(cfg.geminiApiKey),
+          aiModel: cfg.geminiModel,
+          scheduler: Boolean(cfg.schedulerSecret),
+          webhookSecret: Boolean(cfg.webhookSecret),
+          ownerIds: cfg.superAdminIds.length,
+        },
         webhook,
       });
     } catch (error) {
